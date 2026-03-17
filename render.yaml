@@ -1,0 +1,31 @@
+# Render Blueprint: static frontend + API backend (Gemini or ChatGPT).
+# 1. Create both services, then add env vars to the API service (see DEPLOY-RENDER.md).
+# 2. Add the API URL to the static site's environment as VITE_API_URL.
+
+services:
+  - type: web
+    name: sauce-mate
+    runtime: static
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        sync: false
+        # After creating the API service, set this to e.g. https://sauce-mate-api.onrender.com
+
+  - type: web
+    name: sauce-mate-api
+    runtime: node
+    rootDir: server
+    buildCommand: npm ci
+    startCommand: npm start
+    envVars:
+      - key: AI_PROVIDER
+        sync: false
+        # Set to "openai" or "gemini"
+      - key: OPENAI_API_KEY
+        sync: false
+        # Required if AI_PROVIDER=openai
+      - key: GEMINI_API_KEY
+        sync: false
+        # Required if AI_PROVIDER=gemini
