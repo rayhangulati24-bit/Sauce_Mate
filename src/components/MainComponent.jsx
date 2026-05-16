@@ -284,7 +284,7 @@ function MainComponent() {
               <button
                 type="button"
                 onClick={() => openAuthModal("signup")}
-                className="rounded-lg border border-white/80 px-3 py-2 font-roboto text-sm font-medium text-white transition hover:bg-white/10"
+                className="rounded-lg border border-gray-300 px-3 py-2 font-roboto text-sm font-medium text-white transition hover:bg-white/10"
               >
                 Sign up
               </button>

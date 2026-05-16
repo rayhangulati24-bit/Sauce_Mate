@@ -13,14 +13,14 @@ export function AuthProvider({ children }) {
       setLoading(false);
       return;
     }
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
     });
+    const subscription = data?.subscription;
     supabase.auth
       .getSession()
-      .then(({ data: { session } }) => {
+      .then((result) => {
+        const session = result?.data?.session;
         setUser(session?.user ?? null);
       })
       .catch((err) => {
@@ -29,7 +29,13 @@ export function AuthProvider({ children }) {
       .finally(() => {
         setLoading(false);
       });
-    return () => subscription.unsubscribe();
+    return () => {
+      try {
+        subscription?.unsubscribe();
+      } catch (e) {
+        console.error("Auth subscription cleanup:", e);
+      }
+    };
   }, []);
 
   const signUp = async (email, password, options = {}) => {
