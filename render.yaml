@@ -12,6 +12,12 @@ services:
       - key: VITE_API_URL
         sync: false
         # After creating the API service, set this to e.g. https://sauce-mate-api.onrender.com
+      - key: VITE_SUPABASE_URL
+        sync: false
+        # Project URL from Supabase → Settings → API (no /rest/v1/)
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+        # Publishable or anon public key from Supabase → Settings → API
 
   - type: web
     name: sauce-mate-api

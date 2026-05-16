@@ -66,8 +66,24 @@ If you use **Blueprint** and apply `render.yaml`, it will create both services. 
 | sauce-mate-api | OPENAI_API_KEY   | OpenAI API key (for ChatGPT) |
 | sauce-mate-api | GEMINI_API_KEY   | Google AI API key (for Gemini) |
 | sauce-mate     | VITE_API_URL     | Full API URL, e.g. `https://sauce-mate-api.onrender.com` |
+| sauce-mate     | VITE_SUPABASE_URL    | Supabase project URL (for sign-in) |
+| sauce-mate     | VITE_SUPABASE_ANON_KEY | Supabase anon/public key (for sign-in) |
 
 Use either OpenAI or Gemini; set the key for the provider you choose and set `AI_PROVIDER` to match.
+
+---
+
+## Sign-in (optional)
+
+Sign-in uses **Supabase Auth** (email/password). If you don’t set the Supabase env vars, the app works as before and the Sign in button is hidden.
+
+1. Create a free project at [supabase.com](https://supabase.com).
+2. In the Supabase dashboard: **Project Settings** → **API** — copy **Project URL** and **anon public** key.
+3. In Render, for your **static site** (sauce-mate), add:
+   - **VITE_SUPABASE_URL** = your Project URL
+   - **VITE_SUPABASE_ANON_KEY** = your anon public key
+4. Redeploy the static site so the build picks up the new env vars.
+5. In Supabase: **Authentication** → **Providers** — ensure **Email** is enabled. Users can sign up and sign in with email + password.
 
 ---
 
@@ -87,6 +103,7 @@ OPENAI_API_KEY=sk-... npm start
 ```bash
 npm install
 VITE_API_URL=http://localhost:3000 npm run dev
+# With sign-in: also set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
 ```
 
 Open the dev URL (e.g. `http://localhost:5173`). Searches for foods not in the built-in list will use your local API.
