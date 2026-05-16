@@ -254,6 +254,57 @@ function MainComponent() {
   return (
     <>
       <div className="min-h-screen bg-black p-4 relative">
+        <div className="max-w-4xl mx-auto mb-2 flex min-h-[40px] flex-wrap items-center justify-end gap-2">
+          {authLoading && isAuthEnabled && (
+            <span className="font-roboto text-sm text-gray-500">Checking…</span>
+          )}
+          {!authLoading && isAuthEnabled && user && (
+            <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
+              <span className="max-w-[200px] truncate font-roboto text-sm text-gray-300 sm:max-w-xs">
+                {user.email}
+              </span>
+              <button
+                type="button"
+                onClick={() => signOut()}
+                className="rounded-lg bg-gray-700 px-3 py-2 font-roboto text-sm text-white transition hover:bg-gray-600"
+              >
+                Sign out
+              </button>
+            </div>
+          )}
+          {!authLoading && isAuthEnabled && !user && (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => openAuthModal("signin")}
+                className="rounded-lg bg-white px-3 py-2 font-roboto text-sm font-medium text-black transition hover:bg-gray-200"
+              >
+                Sign in
+              </button>
+              <button
+                type="button"
+                onClick={() => openAuthModal("signup")}
+                className="rounded-lg border border-white/80 px-3 py-2 font-roboto text-sm font-medium text-white transition hover:bg-white/10"
+              >
+                Sign up
+              </button>
+            </div>
+          )}
+          {!authLoading && !isAuthEnabled && (
+            <button
+              type="button"
+              onClick={() => {
+                setAuthError("");
+                setAuthNotice(null);
+                setAuthModalOpen(true);
+              }}
+              className="rounded-lg border border-gray-500 px-3 py-2 font-roboto text-sm text-gray-300 transition hover:border-gray-400 hover:text-white"
+            >
+              Account
+            </button>
+          )}
+        </div>
+
         {authModalOpen && (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60"
@@ -415,65 +466,6 @@ function MainComponent() {
             <p className="text-sm text-gray-400 font-roboto mt-2">
               Try our experimental pairings for unique flavor combinations!
             </p>
-
-            <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row sm:flex-wrap">
-              {authLoading && isAuthEnabled && (
-                <p className="text-gray-500 font-roboto text-sm">Checking account…</p>
-              )}
-              {!authLoading && isAuthEnabled && user && (
-                <div className="flex flex-col items-center gap-3 sm:flex-row">
-                  <span className="text-gray-300 font-roboto text-sm">
-                    Signed in as{" "}
-                    <span className="font-medium text-white">{user.email}</span>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => signOut()}
-                    className="rounded-lg bg-gray-700 px-5 py-2.5 font-roboto text-sm font-medium text-white transition hover:bg-gray-600"
-                  >
-                    Sign out
-                  </button>
-                </div>
-              )}
-              {!authLoading && isAuthEnabled && !user && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => openAuthModal("signin")}
-                    className="w-full min-w-[160px] rounded-lg bg-white px-8 py-3 font-roboto text-sm font-semibold text-black shadow-lg transition hover:bg-gray-200 sm:w-auto"
-                  >
-                    Sign in
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openAuthModal("signup")}
-                    className="w-full min-w-[160px] rounded-lg border-2 border-white px-8 py-3 font-roboto text-sm font-semibold text-white transition hover:bg-white/10 sm:w-auto"
-                  >
-                    Create account
-                  </button>
-                </>
-              )}
-              {!authLoading && !isAuthEnabled && (
-                <div className="max-w-md text-center">
-                  <p className="mb-3 font-roboto text-sm text-gray-400">
-                    Email sign-in is not wired on this deploy yet (missing{" "}
-                    <code className="rounded bg-gray-900 px-1 text-gray-200">VITE_SUPABASE_*</code>{" "}
-                    at build time).
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAuthError("");
-                      setAuthNotice(null);
-                      setAuthModalOpen(true);
-                    }}
-                    className="rounded-lg border border-gray-500 px-6 py-2.5 font-roboto text-sm text-gray-300 transition hover:border-gray-400 hover:text-white"
-                  >
-                    How to enable on Render
-                  </button>
-                </div>
-              )}
-            </div>
           </div>
 
           <form
