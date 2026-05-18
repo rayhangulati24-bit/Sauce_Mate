@@ -35,12 +35,52 @@ async function suggestWithOpenAI(term, apiKey) {
   return JSON.parse(text);
 }
 
+/** Prefer explicit AI_PROVIDER; otherwise pick from available keys. */
+function resolveAiProvider() {
+  const explicit = (process.env.AI_PROVIDER || "").toLowerCase().trim();
+  if (explicit === "gemini" || explicit === "openai") return explicit;
+  const hasGemini = Boolean(process.env.GEMINI_API_KEY);
+  const hasOpenai = Boolean(process.env.OPENAI_API_KEY);
+  if (hasGemini && !hasOpenai) return "gemini";
+  if (hasOpenai && !hasGemini) return "openai";
+  if (hasGemini && hasOpenai) return "openai";
+  return "openai";
+}
+
+function normalizeSuggestionsPayload(parsed) {
+  if (!parsed || typeof parsed !== "object") {
+    return { suggestions: [] };
+  }
+  const raw = Array.isArray(parsed.suggestions)
+    ? parsed.suggestions
+    : Array.isArray(parsed)
+      ? parsed
+      : [];
+  const suggestions = raw
+    .filter((item) => item && typeof item === "object")
+    .map((item) => ({
+      name: String(item.name ?? "").trim() || "Suggestion",
+      description: String(item.description ?? "").trim(),
+      type: String(item.type ?? "sauce").trim() || "sauce",
+      recipe: String(item.recipe ?? "").trim(),
+    }))
+    .slice(0, 8);
+  return { suggestions };
+}
+
 async function suggestWithGemini(term, apiKey) {
+  const model =
+    (process.env.GEMINI_MODEL || "gemini-2.0-flash").replace(/^models\//, "");
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+      model
+    )}:generateContent`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey,
+      },
       body: JSON.stringify({
         contents: [
           {
@@ -76,21 +116,21 @@ app.post("/api/suggest-sauces", async (req, res) => {
     return res.status(400).json({ error: "Missing or invalid 'term'" });
   }
 
-  const provider = (process.env.AI_PROVIDER || "openai").toLowerCase();
+  const provider = resolveAiProvider();
   const openaiKey = process.env.OPENAI_API_KEY;
   const geminiKey = process.env.GEMINI_API_KEY;
 
   try {
     if (provider === "gemini" && geminiKey) {
-      const out = await suggestWithGemini(term.trim(), geminiKey);
-      return res.json(out);
+      const raw = await suggestWithGemini(term.trim(), geminiKey);
+      return res.json(normalizeSuggestionsPayload(raw));
     }
-    if ((provider === "openai" || !geminiKey) && openaiKey) {
-      const out = await suggestWithOpenAI(term.trim(), openaiKey);
-      return res.json(out);
+    if (provider === "openai" && openaiKey) {
+      const raw = await suggestWithOpenAI(term.trim(), openaiKey);
+      return res.json(normalizeSuggestionsPayload(raw));
     }
     return res.status(503).json({
-      error: "No AI provider configured. Set OPENAI_API_KEY or GEMINI_API_KEY and optionally AI_PROVIDER=openai|gemini.",
+      error: "No AI provider configured. Set GEMINI_API_KEY and/or OPENAI_API_KEY (optional AI_PROVIDER=openai|gemini). For Gemini-only, GEMINI_API_KEY is enough.",
     });
   } catch (e) {
     console.error(e);
@@ -98,7 +138,18 @@ app.post("/api/suggest-sauces", async (req, res) => {
   }
 });
 
-app.get("/health", (req, res) => res.json({ ok: true }));
+app.get("/health", (req, res) => {
+  const provider = resolveAiProvider();
+  res.json({
+    ok: true,
+    ai: {
+      provider,
+      configured:
+        (provider === "gemini" && Boolean(process.env.GEMINI_API_KEY)) ||
+        (provider === "openai" && Boolean(process.env.OPENAI_API_KEY)),
+    },
+  });
+});
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`SauceMate API listening on ${port}`));

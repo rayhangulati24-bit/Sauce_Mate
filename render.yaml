@@ -26,12 +26,12 @@ services:
     buildCommand: npm ci
     startCommand: npm start
     envVars:
-      - key: AI_PROVIDER
-        sync: false
-        # Set to "openai" or "gemini"
-      - key: OPENAI_API_KEY
-        sync: false
-        # Required if AI_PROVIDER=openai
       - key: GEMINI_API_KEY
         sync: false
-        # Required if AI_PROVIDER=gemini
+        # Google AI Studio key — enough on its own for Gemini suggestions
+      - key: AI_PROVIDER
+        sync: false
+        # Optional: "gemini" or "openai" (auto-detected from keys if omitted)
+      - key: OPENAI_API_KEY
+        sync: false
+        # Only if using ChatGPT instead of Gemini

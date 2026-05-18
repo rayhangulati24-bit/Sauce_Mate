@@ -1,12 +1,19 @@
 import React, { useState, useCallback, useMemo } from "react";
 
 import { useAuth } from "../contexts/AuthContext";
-import { useHandleStreamResponse } from "../utilities/runtime-helpers";
 import { foodDatabase } from "../data/foodDatabase";
 
 /** Convert a key like "fishFingers" to "Fish Fingers" */
 function keyToDisplayName(key) {
   return key.replace(/([A-Z])/g, " $1").trim().replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Production: VITE_API_URL. Local dev: Vite proxies /api to the backend. */
+function getApiBaseUrl() {
+  const configured = import.meta.env.VITE_API_URL?.replace(/\/$/, "");
+  if (configured) return configured;
+  if (import.meta.env.DEV) return "";
+  return null;
 }
 
 function MainComponent() {
@@ -16,8 +23,6 @@ function MainComponent() {
   const [selectedFood, setSelectedFood] = useState(null);
   const [selectedSauce, setSelectedSauce] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [streamingMessage, setStreamingMessage] = useState("");
-  const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState("");
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -28,24 +33,6 @@ function MainComponent() {
   const [authError, setAuthError] = useState("");
   const [authNotice, setAuthNotice] = useState(null);
   const [authSubmitting, setAuthSubmitting] = useState(false);
-
-  const handleStreamResponse = useHandleStreamResponse({
-    onChunk: useCallback((chunk) => {
-      setStreamingMessage(chunk);
-      setIsGenerating(true);
-    }, []),
-    onFinish: useCallback((message) => {
-      try {
-        const parsed = JSON.parse(message);
-        setSelectedFood(parsed);
-        setStreamingMessage("");
-        setIsGenerating(false);
-      } catch (e) {
-        console.error(e);
-        setIsGenerating(false);
-      }
-    }, []),
-  });
 
   // Autocomplete: filter local suggestions as user types (no API calls)
   const autocompleteMatches = useMemo(() => {
@@ -84,120 +71,37 @@ function MainComponent() {
         setSelectedFood(foodDatabase[fuzzyMatch]);
       } else {
         setLoading(true);
-        const apiUrl = import.meta.env.VITE_API_URL?.replace(/\/$/, "");
-        if (apiUrl) {
-          try {
-            const res = await fetch(`${apiUrl}/api/suggest-sauces`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ term: trimmed }),
-            });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) {
-              setError(data.error || "Please try a different search term");
-              setSelectedFood(null);
-            } else {
-              setSelectedFood(data);
-              setError("");
-            }
-          } catch (err) {
-            setError("An error occurred while searching");
-            setSelectedFood(null);
-          }
+        const apiBase = getApiBaseUrl();
+        if (apiBase === null) {
+          setError(
+            "AI search is not configured. Set VITE_API_URL on your static site to your API URL (see DEPLOY-RENDER.md)."
+          );
+          setSelectedFood(null);
           setLoading(false);
           return;
         }
         try {
-          const [scrapingResponse, chatResponse] = await Promise.all([
-            fetch("/integrations/web-scraping/post", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                url: `https://www.allrecipes.com/search?q=${encodeURIComponent(
-                  term
-                )}+sauce`,
-                getText: true,
-              }),
-            }),
-            fetch("/integrations/chat-gpt/conversationgpt4", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                messages: [
-                  {
-                    role: "system",
-                    content:
-                      "You are a helpful assistant that suggests food pairings. If the user's input contains inappropriate, offensive, or adult content, respond with null. Otherwise, provide sauce suggestions.",
-                  },
-                  {
-                    role: "user",
-                    content: `Suggest 3-4 sauce or condiment pairings for ${term}. Format as JSON array of objects with name, description (short), type (sauce/dip), and recipe (detailed) fields.`,
-                  },
-                ],
-                json_schema: {
-                  name: "sauce_suggestions",
-                  schema: {
-                    type: "object",
-                    properties: {
-                      suggestions: {
-                        type: "array",
-                        items: {
-                          type: "object",
-                          properties: {
-                            name: { type: "string" },
-                            description: { type: "string" },
-                            type: { type: "string" },
-                            recipe: { type: "string" },
-                          },
-                          required: ["name", "description", "type", "recipe"],
-                          additionalProperties: false,
-                        },
-                      },
-                    },
-                    required: ["suggestions"],
-                    additionalProperties: false,
-                  },
-                },
-                stream: true,
-              }),
-            }),
-          ]);
-
-          if (scrapingResponse.ok) {
-            const text = await scrapingResponse.text();
-            if (text && text.length > 0) {
-              const recipes = text.match(
-                /(?:sauce|dip|dressing).*?(?:ingredients|directions|instructions)/gi
-              );
-              if (recipes && recipes.length > 0) {
-                const suggestions = recipes.slice(0, 3).map((recipe) => ({
-                  name: recipe.split(/[.,]/)[0].trim(),
-                  description: "Web recipe sauce pairing",
-                  type: "sauce",
-                  recipe: recipe.trim(),
-                }));
-                setSelectedFood({ suggestions });
-                setLoading(false);
-                return;
-              }
-            }
-          }
-
-          if (!chatResponse.ok) {
-            setError("Please try a different search term");
+          const res = await fetch(`${apiBase}/api/suggest-sauces`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ term: trimmed }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            setError(data.error || "Please try a different search term");
             setSelectedFood(null);
           } else {
+            setSelectedFood(data);
             setError("");
-            handleStreamResponse(chatResponse);
           }
-        } catch (err) {
-          setError("An error occurred while searching");
+        } catch {
+          setError("An error occurred while searching. Is the API running?");
           setSelectedFood(null);
         }
         setLoading(false);
       }
     },
-    [handleStreamResponse]
+    []
   );
 
   const handleSauceClick = useCallback((sauce) => {
@@ -497,7 +401,7 @@ function MainComponent() {
               />
               <button
                 type="submit"
-                disabled={loading || isGenerating || !searchInput.trim()}
+                disabled={loading || !searchInput.trim()}
                 className="px-6 py-4 bg-black text-white font-roboto font-semibold rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition"
               >
                 Find sauces
@@ -524,25 +428,18 @@ function MainComponent() {
             )}
           </form>
 
-          {(loading || isGenerating) && (
+          {loading && (
             <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
               <div className="flex items-center justify-center gap-3">
                 <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-300 border-t-gray-900" aria-hidden />
                 <p className="text-lg text-gray-700 font-roboto">
-                  {loading
-                    ? "Finding sauce suggestions..."
-                    : "Generating recommendations..."}
+                  Finding sauce suggestions...
                 </p>
               </div>
-              {isGenerating && streamingMessage && (
-                <pre className="mt-4 p-4 bg-gray-100 rounded-lg text-sm text-gray-600 font-mono overflow-auto max-h-32" aria-live="polite">
-                  {streamingMessage.slice(-500)}
-                </pre>
-              )}
             </div>
           )}
 
-          {searchTerm && !selectedFood && !loading && !isGenerating && !error && (
+          {searchTerm && !selectedFood && !loading && !error && (
             <div className="bg-white rounded-lg shadow-lg p-6 mb-8 text-center">
               <p className="text-gray-600 font-roboto">
                 No sauces found for <strong>{keyToDisplayName(searchTerm.replace(/\s+/g, " "))}</strong>. Try a suggestion above or use &quot;Find sauces&quot; to search the web.
@@ -552,8 +449,7 @@ function MainComponent() {
 
           {searchTerm &&
             selectedFood &&
-            selectedFood.suggestions &&
-            !isGenerating && (
+            selectedFood.suggestions && (
               <div className="bg-white rounded-lg shadow-lg p-6">
                 <h2 className="text-2xl font-bold mb-4 text-black font-roboto">
                   {searchTerm.toLowerCase() === "experimental"

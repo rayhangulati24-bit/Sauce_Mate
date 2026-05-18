@@ -34,9 +34,9 @@ Deploy **two** services and connect them with env vars.
    - **Build command:** `npm ci`
    - **Start command:** `npm start`
 4. **Environment** (required for AI):
-   - **AI_PROVIDER** = `openai` or `gemini`
-   - **OPENAI_API_KEY** = your OpenAI API key (if using ChatGPT).
-   - **GEMINI_API_KEY** = your Google AI (Gemini) API key (if using Gemini).
+   - **GEMINI_API_KEY** = your Google AI (Gemini) API key from [AI Studio](https://aistudio.google.com/apikey) — this alone is enough; the API auto-uses Gemini when only this key is set.
+   - Optional **AI_PROVIDER** = `gemini` or `openai` if you configure both keys.
+   - **OPENAI_API_KEY** = only if you use ChatGPT instead of Gemini.
 5. Create the service. Note the URL, e.g. `https://sauce-mate-api.onrender.com`.
 
 ### 2. Frontend (static site)
@@ -69,7 +69,7 @@ If you use **Blueprint** and apply `render.yaml`, it will create both services. 
 | sauce-mate     | VITE_SUPABASE_URL    | Supabase project URL (for sign-in) |
 | sauce-mate     | VITE_SUPABASE_ANON_KEY | Supabase anon/public key (for sign-in) |
 
-Use either OpenAI or Gemini; set the key for the provider you choose and set `AI_PROVIDER` to match.
+For Gemini only, set **GEMINI_API_KEY** on the API service (no `AI_PROVIDER` required). Set **VITE_API_URL** on the static site to your API URL and redeploy both services after changing env vars.
 
 ---
 
