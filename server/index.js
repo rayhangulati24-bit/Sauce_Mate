@@ -138,6 +138,15 @@ app.post("/api/suggest-sauces", async (req, res) => {
   }
 });
 
+app.get("/", (req, res) => {
+  res.json({
+    ok: true,
+    message: "SauceMate API",
+    health: "/health",
+    suggest: "POST /api/suggest-sauces",
+  });
+});
+
 app.get("/health", (req, res) => {
   const provider = resolveAiProvider();
   res.json({
