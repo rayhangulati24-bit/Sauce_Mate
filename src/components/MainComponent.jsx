@@ -3,6 +3,7 @@ import React, { useState, useCallback, useMemo, useRef, useEffect } from "react"
 import { useAuth } from "../contexts/AuthContext";
 import { foodDatabase } from "../data/foodDatabase";
 import SpinningBottle from "./SpinningBottle";
+import menuIcon from "../assets/menu-icon.png";
 
 /** Convert a key like "fishFingers" to "Fish Fingers" */
 function keyToDisplayName(key) {
@@ -65,6 +66,14 @@ function MainComponent() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerTab, setDrawerTab] = useState("saved");
   const [savedSauces, setSavedSauces] = useState(() => readSavedSauces(null));
+  const [menuSpinning, setMenuSpinning] = useState(false);
+  const menuSpinTimerRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (menuSpinTimerRef.current) clearTimeout(menuSpinTimerRef.current);
+    };
+  }, []);
 
   const [profileName, setProfileName] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -355,23 +364,35 @@ function MainComponent() {
         <div className="max-w-4xl mx-auto mb-2 flex min-h-[40px] flex-wrap items-center justify-between gap-2">
           <button
             type="button"
-            onClick={() => (drawerOpen ? setDrawerOpen(false) : openDrawer("saved"))}
+            onClick={() => {
+              if (menuSpinTimerRef.current) {
+                clearTimeout(menuSpinTimerRef.current);
+                menuSpinTimerRef.current = null;
+              }
+              setMenuSpinning(false);
+              requestAnimationFrame(() => setMenuSpinning(true));
+              menuSpinTimerRef.current = setTimeout(() => {
+                setMenuSpinning(false);
+                menuSpinTimerRef.current = null;
+              }, 600);
+              if (drawerOpen) {
+                setDrawerOpen(false);
+              } else {
+                openDrawer("saved");
+              }
+            }}
             aria-expanded={drawerOpen}
             aria-controls="account-drawer"
             aria-label={drawerOpen ? "Close menu" : "Open menu"}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-600 bg-gray-900 px-3 py-2 font-roboto text-sm text-white transition hover:border-gray-400 hover:bg-gray-800"
+            className="group inline-flex h-12 w-12 items-center justify-center rounded-full p-1 transition hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
           >
-            <span
-              className="relative inline-flex h-5 w-9 items-center rounded-full border border-gray-500 bg-gray-700"
+            <img
+              src={menuIcon}
+              alt=""
               aria-hidden="true"
-            >
-              <span
-                className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-white shadow transition-all ${
-                  drawerOpen ? "left-[18px]" : "left-0.5"
-                }`}
-              />
-            </span>
-            <span className="hidden sm:inline">Menu</span>
+              className={`h-9 w-9 select-none ${menuSpinning ? "animate-spin-once" : ""}`}
+              draggable="false"
+            />
           </button>
         <div className="flex min-h-[40px] flex-wrap items-center justify-end gap-2">
           {authLoading && isAuthEnabled && (
@@ -425,17 +446,17 @@ function MainComponent() {
         </div>
         </div>
 
-        {drawerOpen && (
-          <div
-            className="fixed inset-0 z-40 bg-black/60"
-            onClick={() => setDrawerOpen(false)}
-            aria-hidden="true"
-          />
-        )}
+        <div
+          className={`fixed inset-0 z-40 bg-black/60 transition-opacity duration-500 ${
+            drawerOpen ? "opacity-100" : "pointer-events-none opacity-0"
+          }`}
+          onClick={() => setDrawerOpen(false)}
+          aria-hidden="true"
+        />
 
         <aside
           id="account-drawer"
-          className={`fixed left-0 top-0 z-50 h-full w-[88vw] max-w-sm bg-white shadow-2xl transition-transform duration-200 ease-out ${
+          className={`fixed left-0 top-0 z-50 h-full w-[88vw] max-w-sm bg-white shadow-2xl transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
             drawerOpen ? "translate-x-0" : "-translate-x-full"
           }`}
           aria-hidden={!drawerOpen}
@@ -492,7 +513,7 @@ function MainComponent() {
               <div>
                 {savedSauces.length === 0 ? (
                   <p className="font-roboto text-sm text-gray-600">
-                    No saved sauces yet. Tap the star on any sauce to save it here.
+                    No saved sauces yet. Tap the bookmark on any sauce to save it here.
                   </p>
                 ) : (
                   <ul className="space-y-3">
@@ -988,13 +1009,25 @@ function MainComponent() {
                           aria-pressed={saved}
                           aria-label={saved ? `Unsave ${item.name}` : `Save ${item.name}`}
                           title={saved ? "Saved — click to remove" : "Save sauce"}
-                          className={`absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-full border text-lg leading-none transition ${
+                          className={`absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-full transition ${
                             saved
-                              ? "border-yellow-400 bg-yellow-300 text-black"
-                              : "border-gray-300 bg-white text-gray-500 hover:text-black"
+                              ? "bg-black text-white"
+                              : "border border-gray-300 bg-white text-gray-500 hover:text-black"
                           }`}
                         >
-                          {saved ? "★" : "☆"}
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill={saved ? "currentColor" : "none"}
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="h-4 w-4"
+                            aria-hidden="true"
+                          >
+                            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+                          </svg>
                         </button>
                         <h3 className="text-xl font-bold mb-2 pr-10 text-black font-roboto">
                           {item.name}
