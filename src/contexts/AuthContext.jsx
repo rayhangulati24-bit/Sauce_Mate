@@ -64,12 +64,36 @@ export function AuthProvider({ children }) {
     await supabase.auth.signOut();
   };
 
+  const updateProfile = async ({ full_name } = {}) => {
+    if (!supabase) throw new Error("Supabase not configured");
+    const { data, error } = await supabase.auth.updateUser({
+      data: { full_name },
+    });
+    if (error) throw error;
+    setUser(data?.user ?? null);
+    return data;
+  };
+
+  const updatePassword = async (newPassword) => {
+    if (!supabase) throw new Error("Supabase not configured");
+    if (!newPassword || newPassword.length < 6) {
+      throw new Error("Password must be at least 6 characters.");
+    }
+    const { data, error } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
+    if (error) throw error;
+    return data;
+  };
+
   const value = {
     user,
     loading,
     signIn,
     signUp,
     signOut,
+    updateProfile,
+    updatePassword,
     isAuthEnabled: !!supabase,
   };
 

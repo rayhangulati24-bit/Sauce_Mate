@@ -17,8 +17,33 @@ function getApiBaseUrl() {
   return null;
 }
 
+/** Build a per-user localStorage key so multiple accounts on one device don't share. */
+function savedSaucesStorageKey(user) {
+  return `saucemate:savedSauces:${user?.id || "guest"}`;
+}
+
+function readSavedSauces(user) {
+  try {
+    const raw = localStorage.getItem(savedSaucesStorageKey(user));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 function MainComponent() {
-  const { user, loading: authLoading, signIn, signUp, signOut, isAuthEnabled } = useAuth();
+  const {
+    user,
+    loading: authLoading,
+    signIn,
+    signUp,
+    signOut,
+    updateProfile,
+    updatePassword,
+    isAuthEnabled,
+  } = useAuth();
   const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedFood, setSelectedFood] = useState(null);
@@ -36,6 +61,74 @@ function MainComponent() {
   const [authSubmitting, setAuthSubmitting] = useState(false);
   const [bottleSpinning, setBottleSpinning] = useState(false);
   const bottleSpinTimerRef = useRef(null);
+
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerTab, setDrawerTab] = useState("saved");
+  const [savedSauces, setSavedSauces] = useState(() => readSavedSauces(null));
+
+  const [profileName, setProfileName] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [accountSubmitting, setAccountSubmitting] = useState(false);
+  const [accountError, setAccountError] = useState("");
+  const [accountNotice, setAccountNotice] = useState("");
+
+  useEffect(() => {
+    setSavedSauces(readSavedSauces(user));
+    setProfileName(user?.user_metadata?.full_name || "");
+    setAccountError("");
+    setAccountNotice("");
+    setNewPassword("");
+    setConfirmPassword("");
+  }, [user]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(savedSaucesStorageKey(user), JSON.stringify(savedSauces));
+    } catch (err) {
+      console.error("Failed to persist saved sauces:", err);
+    }
+  }, [savedSauces, user]);
+
+  const isSauceSaved = useCallback(
+    (sauce) =>
+      !!sauce && savedSauces.some((s) => s.name?.toLowerCase() === sauce.name?.toLowerCase()),
+    [savedSauces]
+  );
+
+  const toggleSavedSauce = useCallback(
+    (sauce, foodContext) => {
+      if (!sauce?.name) return;
+      setSavedSauces((prev) => {
+        const exists = prev.some(
+          (s) => s.name?.toLowerCase() === sauce.name.toLowerCase()
+        );
+        if (exists) {
+          return prev.filter(
+            (s) => s.name?.toLowerCase() !== sauce.name.toLowerCase()
+          );
+        }
+        return [
+          {
+            name: sauce.name,
+            description: sauce.description || "",
+            type: sauce.type || "",
+            recipe: sauce.recipe || "",
+            food: foodContext || "",
+            savedAt: new Date().toISOString(),
+          },
+          ...prev,
+        ];
+      });
+    },
+    []
+  );
+
+  const removeSavedSauce = useCallback((name) => {
+    setSavedSauces((prev) =>
+      prev.filter((s) => s.name?.toLowerCase() !== name?.toLowerCase())
+    );
+  }, []);
 
   const startBottleSpin = useCallback((durationMs) => {
     if (bottleSpinTimerRef.current) {
@@ -191,10 +284,96 @@ function MainComponent() {
     setAuthModalOpen(true);
   }, []);
 
+  const handleProfileSave = async (e) => {
+    e.preventDefault();
+    setAccountError("");
+    setAccountNotice("");
+    if (!user) {
+      setAccountError("Sign in to update your profile.");
+      return;
+    }
+    setAccountSubmitting(true);
+    try {
+      await updateProfile({ full_name: profileName.trim() });
+      setAccountNotice("Profile updated.");
+    } catch (err) {
+      setAccountError(err.message || "Could not update profile.");
+    } finally {
+      setAccountSubmitting(false);
+    }
+  };
+
+  const handlePasswordSave = async (e) => {
+    e.preventDefault();
+    setAccountError("");
+    setAccountNotice("");
+    if (!user) {
+      setAccountError("Sign in to change your password.");
+      return;
+    }
+    if (newPassword.length < 6) {
+      setAccountError("New password must be at least 6 characters.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setAccountError("Passwords do not match.");
+      return;
+    }
+    setAccountSubmitting(true);
+    try {
+      await updatePassword(newPassword);
+      setAccountNotice("Password updated.");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (err) {
+      setAccountError(err.message || "Could not update password.");
+    } finally {
+      setAccountSubmitting(false);
+    }
+  };
+
+  const openDrawer = useCallback((tab = "saved") => {
+    setDrawerTab(tab);
+    setAccountError("");
+    setAccountNotice("");
+    setDrawerOpen(true);
+  }, []);
+
+  const handleViewSavedSauce = useCallback((sauce) => {
+    setSelectedSauce({
+      name: sauce.name,
+      description: sauce.description,
+      type: sauce.type,
+      recipe: sauce.recipe,
+    });
+    setDrawerOpen(false);
+  }, []);
+
   return (
     <>
       <div className="min-h-screen bg-black p-4 relative">
-        <div className="max-w-4xl mx-auto mb-2 flex min-h-[40px] flex-wrap items-center justify-end gap-2">
+        <div className="max-w-4xl mx-auto mb-2 flex min-h-[40px] flex-wrap items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={() => (drawerOpen ? setDrawerOpen(false) : openDrawer("saved"))}
+            aria-expanded={drawerOpen}
+            aria-controls="account-drawer"
+            aria-label={drawerOpen ? "Close menu" : "Open menu"}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-600 bg-gray-900 px-3 py-2 font-roboto text-sm text-white transition hover:border-gray-400 hover:bg-gray-800"
+          >
+            <span
+              className="relative inline-flex h-5 w-9 items-center rounded-full border border-gray-500 bg-gray-700"
+              aria-hidden="true"
+            >
+              <span
+                className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-white shadow transition-all ${
+                  drawerOpen ? "left-[18px]" : "left-0.5"
+                }`}
+              />
+            </span>
+            <span className="hidden sm:inline">Menu</span>
+          </button>
+        <div className="flex min-h-[40px] flex-wrap items-center justify-end gap-2">
           {authLoading && isAuthEnabled && (
             <span className="font-roboto text-sm text-gray-500">Checking…</span>
           )}
@@ -244,6 +423,301 @@ function MainComponent() {
             </button>
           )}
         </div>
+        </div>
+
+        {drawerOpen && (
+          <div
+            className="fixed inset-0 z-40 bg-black/60"
+            onClick={() => setDrawerOpen(false)}
+            aria-hidden="true"
+          />
+        )}
+
+        <aside
+          id="account-drawer"
+          className={`fixed left-0 top-0 z-50 h-full w-[88vw] max-w-sm bg-white shadow-2xl transition-transform duration-200 ease-out ${
+            drawerOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
+          aria-hidden={!drawerOpen}
+          role="dialog"
+          aria-label="Saved sauces and account settings"
+        >
+          <div className="flex items-center justify-between border-b border-gray-200 p-4">
+            <h2 className="font-roboto text-lg font-bold text-black">Your menu</h2>
+            <button
+              type="button"
+              onClick={() => setDrawerOpen(false)}
+              className="text-2xl leading-none text-gray-500 hover:text-black"
+              aria-label="Close menu"
+            >
+              ×
+            </button>
+          </div>
+
+          <div className="flex border-b border-gray-200">
+            <button
+              type="button"
+              onClick={() => {
+                setDrawerTab("saved");
+                setAccountError("");
+                setAccountNotice("");
+              }}
+              className={`flex-1 py-3 font-roboto text-sm font-medium ${
+                drawerTab === "saved"
+                  ? "border-b-2 border-black text-black"
+                  : "text-gray-500 hover:text-black"
+              }`}
+            >
+              Saved sauces
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setDrawerTab("account");
+                setAccountError("");
+                setAccountNotice("");
+              }}
+              className={`flex-1 py-3 font-roboto text-sm font-medium ${
+                drawerTab === "account"
+                  ? "border-b-2 border-black text-black"
+                  : "text-gray-500 hover:text-black"
+              }`}
+            >
+              Account
+            </button>
+          </div>
+
+          <div className="h-[calc(100%-7.25rem)] overflow-y-auto p-4">
+            {drawerTab === "saved" && (
+              <div>
+                {savedSauces.length === 0 ? (
+                  <p className="font-roboto text-sm text-gray-600">
+                    No saved sauces yet. Tap the star on any sauce to save it here.
+                  </p>
+                ) : (
+                  <ul className="space-y-3">
+                    {savedSauces.map((sauce) => (
+                      <li
+                        key={sauce.name}
+                        className="rounded-lg border border-gray-200 p-3"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <h3 className="font-roboto text-base font-bold text-black">
+                              {sauce.name}
+                            </h3>
+                            {sauce.type && (
+                              <span className="mt-1 inline-block rounded-full bg-black px-2 py-0.5 font-roboto text-xs text-white">
+                                {sauce.type}
+                              </span>
+                            )}
+                            {sauce.food && (
+                              <p className="mt-1 font-roboto text-xs text-gray-500">
+                                Saved from: {sauce.food}
+                              </p>
+                            )}
+                            {sauce.description && (
+                              <p className="mt-2 font-roboto text-sm text-gray-700">
+                                {sauce.description}
+                              </p>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeSavedSauce(sauce.name)}
+                            className="shrink-0 rounded-md border border-gray-300 px-2 py-1 font-roboto text-xs text-gray-700 hover:bg-gray-100"
+                            aria-label={`Remove ${sauce.name} from saved`}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                        {sauce.recipe && (
+                          <button
+                            type="button"
+                            onClick={() => handleViewSavedSauce(sauce)}
+                            className="mt-3 inline-flex rounded-md bg-black px-3 py-1.5 font-roboto text-xs font-medium text-white hover:bg-gray-800"
+                          >
+                            View recipe
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+
+            {drawerTab === "account" && (
+              <div className="space-y-6">
+                {!isAuthEnabled && (
+                  <p className="font-roboto text-sm text-gray-700">
+                    Sign-in isn&apos;t configured for this app yet, so account
+                    information can&apos;t be changed here. See the{" "}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDrawerOpen(false);
+                        setAuthError("");
+                        setAuthNotice(null);
+                        setAuthModalOpen(true);
+                      }}
+                      className="font-medium text-black underline"
+                    >
+                      sign-in setup
+                    </button>{" "}
+                    for details.
+                  </p>
+                )}
+
+                {isAuthEnabled && !user && (
+                  <div className="space-y-3">
+                    <p className="font-roboto text-sm text-gray-700">
+                      Sign in to update your name, email, or password.
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDrawerOpen(false);
+                          openAuthModal("signin");
+                        }}
+                        className="rounded-lg bg-black px-3 py-2 font-roboto text-sm font-medium text-white hover:bg-gray-800"
+                      >
+                        Sign in
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDrawerOpen(false);
+                          openAuthModal("signup");
+                        }}
+                        className="rounded-lg border border-gray-300 px-3 py-2 font-roboto text-sm font-medium text-black hover:bg-gray-100"
+                      >
+                        Sign up
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {isAuthEnabled && user && (
+                  <>
+                    <div className="rounded-lg bg-gray-100 p-3">
+                      <p className="font-roboto text-xs uppercase tracking-wide text-gray-500">
+                        Signed in as
+                      </p>
+                      <p className="break-all font-roboto text-sm font-medium text-black">
+                        {user.email}
+                      </p>
+                    </div>
+
+                    {accountNotice && (
+                      <p
+                        role="status"
+                        className="rounded-lg border border-green-200 bg-green-50 p-3 font-roboto text-sm text-green-700"
+                      >
+                        {accountNotice}
+                      </p>
+                    )}
+                    {accountError && (
+                      <p
+                        role="alert"
+                        className="rounded-lg border border-red-200 bg-red-50 p-3 font-roboto text-sm text-red-700"
+                      >
+                        {accountError}
+                      </p>
+                    )}
+
+                    <form onSubmit={handleProfileSave} className="space-y-3">
+                      <div>
+                        <label
+                          htmlFor="profile-name"
+                          className="mb-1 block font-roboto text-sm text-gray-700"
+                        >
+                          Display name
+                        </label>
+                        <input
+                          id="profile-name"
+                          type="text"
+                          value={profileName}
+                          onChange={(e) => setProfileName(e.target.value)}
+                          className="w-full rounded-lg border border-gray-300 p-3 font-roboto"
+                          placeholder="Your name"
+                          autoComplete="name"
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={accountSubmitting}
+                        className="w-full rounded-lg bg-black py-2.5 font-roboto text-sm font-semibold text-white hover:bg-gray-800 disabled:opacity-50"
+                      >
+                        {accountSubmitting ? "Saving…" : "Save profile"}
+                      </button>
+                    </form>
+
+                    <form onSubmit={handlePasswordSave} className="space-y-3">
+                      <div>
+                        <label
+                          htmlFor="new-password"
+                          className="mb-1 block font-roboto text-sm text-gray-700"
+                        >
+                          New password
+                        </label>
+                        <input
+                          id="new-password"
+                          type="password"
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          className="w-full rounded-lg border border-gray-300 p-3 font-roboto"
+                          placeholder="••••••••"
+                          minLength={6}
+                          autoComplete="new-password"
+                        />
+                      </div>
+                      <div>
+                        <label
+                          htmlFor="confirm-password"
+                          className="mb-1 block font-roboto text-sm text-gray-700"
+                        >
+                          Confirm new password
+                        </label>
+                        <input
+                          id="confirm-password"
+                          type="password"
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          className="w-full rounded-lg border border-gray-300 p-3 font-roboto"
+                          placeholder="••••••••"
+                          minLength={6}
+                          autoComplete="new-password"
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={
+                          accountSubmitting || !newPassword || !confirmPassword
+                        }
+                        className="w-full rounded-lg border border-gray-300 py-2.5 font-roboto text-sm font-semibold text-black hover:bg-gray-100 disabled:opacity-50"
+                      >
+                        {accountSubmitting ? "Saving…" : "Update password"}
+                      </button>
+                    </form>
+
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await signOut();
+                        setDrawerOpen(false);
+                      }}
+                      className="w-full rounded-lg bg-gray-200 py-2.5 font-roboto text-sm font-medium text-gray-800 hover:bg-gray-300"
+                    >
+                      Sign out
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </aside>
 
         {authModalOpen && (
           <div
@@ -494,23 +968,46 @@ function MainComponent() {
                     : `Sauces for ${keyToDisplayName(searchTerm.replace(/\s+/g, " "))}`}
                 </h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {selectedFood.suggestions.map((item, index) => (
-                    <div
-                      key={index}
-                      className="bg-gray-100 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
-                      onClick={() => handleSauceClick(item)}
-                    >
-                      <h3 className="text-xl font-bold mb-2 text-black font-roboto">
-                        {item.name}
-                      </h3>
-                      <p className="text-gray-700 font-roboto">
-                        {item.description}
-                      </p>
-                      <span className="inline-block mt-2 px-3 py-1 bg-black text-white rounded-full text-sm font-roboto">
-                        {item.type}
-                      </span>
-                    </div>
-                  ))}
+                  {selectedFood.suggestions.map((item, index) => {
+                    const saved = isSauceSaved(item);
+                    return (
+                      <div
+                        key={index}
+                        className="relative bg-gray-100 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
+                        onClick={() => handleSauceClick(item)}
+                      >
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleSavedSauce(
+                              item,
+                              keyToDisplayName(searchTerm.replace(/\s+/g, " "))
+                            );
+                          }}
+                          aria-pressed={saved}
+                          aria-label={saved ? `Unsave ${item.name}` : `Save ${item.name}`}
+                          title={saved ? "Saved — click to remove" : "Save sauce"}
+                          className={`absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-full border text-lg leading-none transition ${
+                            saved
+                              ? "border-yellow-400 bg-yellow-300 text-black"
+                              : "border-gray-300 bg-white text-gray-500 hover:text-black"
+                          }`}
+                        >
+                          {saved ? "★" : "☆"}
+                        </button>
+                        <h3 className="text-xl font-bold mb-2 pr-10 text-black font-roboto">
+                          {item.name}
+                        </h3>
+                        <p className="text-gray-700 font-roboto">
+                          {item.description}
+                        </p>
+                        <span className="inline-block mt-2 px-3 py-1 bg-black text-white rounded-full text-sm font-roboto">
+                          {item.type}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
