@@ -5,11 +5,12 @@
 @tailwind utilities;
 
 .bottle-container {
-  perspective: 500px;
+  perspective: 600px;
 }
 
 .bottle-spin {
   animation: bottle-spin 0.55s linear infinite;
+  transform-origin: center center;
   transform-style: preserve-3d;
 }
 
@@ -18,6 +19,6 @@
     transform: rotateY(0deg);
   }
   to {
-    transform: rotateY(360deg);
+    transform: rotateY(-360deg);
   }
 }

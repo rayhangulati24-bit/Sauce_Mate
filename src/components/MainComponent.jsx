@@ -464,12 +464,10 @@ function MainComponent() {
             )}
           </form>
 
-          <SpinningBottle spinning={bottleSpinning} />
-
-          {loading && (
-            <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
-              <div className="flex items-center justify-center gap-3">
-                <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-300 border-t-gray-900" aria-hidden />
+          {bottleSpinning && (
+            <div className="bg-white rounded-lg shadow-lg p-6 mb-8" role="status">
+              <div className="flex flex-col items-center justify-center gap-3">
+                <SpinningBottle visible className="" />
                 <p className="text-lg text-gray-700 font-roboto">
                   Finding sauce suggestions...
                 </p>
@@ -477,7 +475,7 @@ function MainComponent() {
             </div>
           )}
 
-          {searchTerm && !selectedFood && !loading && !error && (
+          {searchTerm && !selectedFood && !loading && !bottleSpinning && !error && (
             <div className="bg-white rounded-lg shadow-lg p-6 mb-8 text-center">
               <p className="text-gray-600 font-roboto">
                 No sauces found for <strong>{keyToDisplayName(searchTerm.replace(/\s+/g, " "))}</strong>. Try a suggestion above or use &quot;Find sauces&quot; to search the web.
