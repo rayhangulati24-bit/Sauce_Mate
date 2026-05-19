@@ -37,6 +37,7 @@ Deploy **two** services and connect them with env vars.
    - **GEMINI_API_KEY** = your Google AI (Gemini) API key from [AI Studio](https://aistudio.google.com/apikey) — this alone is enough; the API auto-uses Gemini when only this key is set.
    - Optional **AI_PROVIDER** = `gemini` or `openai` if you configure both keys.
    - **OPENAI_API_KEY** = only if you use ChatGPT instead of Gemini.
+   - Optional **GENERATED_FOOD_DB_FILE** = path to the saved AI-results JSON file. If you add a Render persistent disk, point this at the disk mount path so generated results survive restarts and redeploys.
 5. Create the service. Note the URL, e.g. `https://sauce-mate-api.onrender.com`.
 
 ### 2. Frontend (static site)
@@ -65,11 +66,14 @@ If you use **Blueprint** and apply `render.yaml`, it will create both services. 
 | sauce-mate-api | AI_PROVIDER      | `openai` or `gemini` |
 | sauce-mate-api | OPENAI_API_KEY   | OpenAI API key (for ChatGPT) |
 | sauce-mate-api | GEMINI_API_KEY   | Google AI API key (for Gemini) |
+| sauce-mate-api | GENERATED_FOOD_DB_FILE | Optional path for saved AI search results |
 | sauce-mate     | VITE_API_URL     | Full API URL, e.g. `https://sauce-mate-api.onrender.com` |
 | sauce-mate     | VITE_SUPABASE_URL    | Supabase project URL (for sign-in) |
 | sauce-mate     | VITE_SUPABASE_ANON_KEY | Supabase anon/public key (for sign-in) |
 
 For Gemini only, set **GEMINI_API_KEY** on the API service (no `AI_PROVIDER` required). Set **VITE_API_URL** on the static site to your API URL and redeploy both services after changing env vars.
+
+Unknown food searches are saved by the API after the first successful AI response. Later searches for the same food return from that saved data instead of calling AI again.
 
 ---
 
