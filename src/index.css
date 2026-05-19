@@ -16,9 +16,9 @@
 
 @keyframes bottle-spin {
   from {
-    transform: rotateY(0deg);
+    transform: rotateX(0deg);
   }
   to {
-    transform: rotateY(-360deg);
+    transform: rotateX(360deg);
   }
 }
