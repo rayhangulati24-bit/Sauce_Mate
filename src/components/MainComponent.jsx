@@ -485,7 +485,8 @@ function MainComponent() {
 
           {searchTerm &&
             selectedFood &&
-            selectedFood.suggestions && (
+            selectedFood.suggestions &&
+            !bottleSpinning && (
               <div className="bg-white rounded-lg shadow-lg p-6">
                 <h2 className="text-2xl font-bold mb-4 text-black font-roboto">
                   {searchTerm.toLowerCase() === "experimental"
