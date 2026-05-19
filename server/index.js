@@ -68,9 +68,47 @@ function normalizeSuggestionsPayload(parsed) {
   return { suggestions };
 }
 
-async function suggestWithGemini(term, apiKey) {
-  const model =
-    (process.env.GEMINI_MODEL || "gemini-2.0-flash").replace(/^models\//, "");
+const DEFAULT_GEMINI_MODELS = [
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
+  "gemini-1.5-flash",
+];
+
+function geminiModelsToTry() {
+  const fromEnv = (process.env.GEMINI_MODEL || "")
+    .split(",")
+    .map((m) => m.trim().replace(/^models\//, ""))
+    .filter(Boolean);
+  return fromEnv.length > 0 ? fromEnv : DEFAULT_GEMINI_MODELS;
+}
+
+function formatGeminiError(status, body) {
+  let message = "";
+  try {
+    const parsed = JSON.parse(body);
+    message = parsed?.error?.message || "";
+  } catch {
+    message = body;
+  }
+  const quotaHit =
+    status === 429 ||
+    /quota|RESOURCE_EXHAUSTED|rate.?limit/i.test(message);
+  if (quotaHit) {
+    return {
+      status: 429,
+      message:
+        "Gemini free tier limit reached for this model. Wait a minute and try again. On Render, set GEMINI_MODEL=gemini-2.5-flash-lite (or enable billing in Google AI Studio).",
+    };
+  }
+  return {
+    status: status >= 400 && status < 600 ? status : 502,
+    message: message
+      ? `Gemini error: ${message.slice(0, 200)}`
+      : "Gemini request failed. Check your API key and model name.",
+  };
+}
+
+async function suggestWithGeminiOneModel(term, apiKey, model) {
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
       model
@@ -100,14 +138,45 @@ async function suggestWithGemini(term, apiKey) {
       }),
     }
   );
+  const body = await res.text();
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Gemini: ${res.status} ${err}`);
+    const err = new Error(body);
+    err.status = res.status;
+    err.model = model;
+    throw err;
   }
-  const data = await res.json();
+  const data = JSON.parse(body);
   const text =
     data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "{}";
   return JSON.parse(text);
+}
+
+async function suggestWithGemini(term, apiKey) {
+  const models = geminiModelsToTry();
+  let lastQuotaError = null;
+
+  for (const model of models) {
+    try {
+      return await suggestWithGeminiOneModel(term, apiKey, model);
+    } catch (e) {
+      const formatted = formatGeminiError(e.status || 500, e.message || "");
+      if (formatted.status === 429) {
+        lastQuotaError = formatted;
+        console.warn(`Gemini model ${model} quota exceeded, trying next…`);
+        continue;
+      }
+      const err = new Error(formatted.message);
+      err.status = formatted.status;
+      throw err;
+    }
+  }
+
+  const err = new Error(
+    lastQuotaError?.message ||
+      "All Gemini models are unavailable. Check your Google AI Studio quota."
+  );
+  err.status = 429;
+  throw err;
 }
 
 app.post("/api/suggest-sauces", async (req, res) => {
@@ -134,7 +203,15 @@ app.post("/api/suggest-sauces", async (req, res) => {
     });
   } catch (e) {
     console.error(e);
-    return res.status(500).json({ error: e.message || "AI request failed" });
+    const status = e.status && e.status >= 400 && e.status < 600 ? e.status : 500;
+    const message = e.message || "AI request failed";
+    const friendly =
+      message.startsWith("Gemini") || message.startsWith("OpenAI")
+        ? message.replace(/^(Gemini|OpenAI):\s*\d+\s*/, "").trim()
+        : message.length > 280
+          ? "AI request failed. Please try again in a minute."
+          : message;
+    return res.status(status).json({ error: friendly || "AI request failed" });
   }
 });
 
@@ -156,6 +233,7 @@ app.get("/health", (req, res) => {
       configured:
         (provider === "gemini" && Boolean(process.env.GEMINI_API_KEY)) ||
         (provider === "openai" && Boolean(process.env.OPENAI_API_KEY)),
+      geminiModels: provider === "gemini" ? geminiModelsToTry() : undefined,
     },
   });
 });
