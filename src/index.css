@@ -4,21 +4,16 @@
 @tailwind components;
 @tailwind utilities;
 
-.bottle-container {
-  perspective: 600px;
-}
-
 .bottle-spin {
-  animation: bottle-spin 0.55s linear infinite;
+  animation: bottle-spin 1.2s linear infinite;
   transform-origin: center center;
-  transform-style: preserve-3d;
 }
 
 @keyframes bottle-spin {
   from {
-    transform: rotateZ(0deg);
+    transform: rotate(0deg);
   }
   to {
-    transform: rotateZ(360deg);
+    transform: rotate(-360deg);
   }
 }
