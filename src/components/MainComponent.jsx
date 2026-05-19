@@ -1,7 +1,8 @@
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo, useRef, useEffect } from "react";
 
 import { useAuth } from "../contexts/AuthContext";
 import { foodDatabase } from "../data/foodDatabase";
+import SpinningBottle from "./SpinningBottle";
 
 /** Convert a key like "fishFingers" to "Fish Fingers" */
 function keyToDisplayName(key) {
@@ -33,6 +34,36 @@ function MainComponent() {
   const [authError, setAuthError] = useState("");
   const [authNotice, setAuthNotice] = useState(null);
   const [authSubmitting, setAuthSubmitting] = useState(false);
+  const [bottleSpinning, setBottleSpinning] = useState(false);
+  const bottleSpinTimerRef = useRef(null);
+
+  const startBottleSpin = useCallback((durationMs) => {
+    if (bottleSpinTimerRef.current) {
+      clearTimeout(bottleSpinTimerRef.current);
+      bottleSpinTimerRef.current = null;
+    }
+    setBottleSpinning(true);
+    if (durationMs != null) {
+      bottleSpinTimerRef.current = setTimeout(() => {
+        setBottleSpinning(false);
+        bottleSpinTimerRef.current = null;
+      }, durationMs);
+    }
+  }, []);
+
+  const stopBottleSpin = useCallback(() => {
+    if (bottleSpinTimerRef.current) {
+      clearTimeout(bottleSpinTimerRef.current);
+      bottleSpinTimerRef.current = null;
+    }
+    setBottleSpinning(false);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (bottleSpinTimerRef.current) clearTimeout(bottleSpinTimerRef.current);
+    };
+  }, []);
 
   // Autocomplete: filter local suggestions as user types (no API calls)
   const autocompleteMatches = useMemo(() => {
@@ -54,6 +85,7 @@ function MainComponent() {
       setSelectedSauce(null);
 
       if (trimmed.toLowerCase() === "rayhan gulati") {
+        startBottleSpin(2000);
         setError("He is the creator of this app!");
         setSelectedFood(null);
         return;
@@ -66,13 +98,16 @@ function MainComponent() {
       );
 
       if (matches.length > 0) {
+        startBottleSpin(2000);
         setError("");
         const fuzzyMatch = matches[0];
         setSelectedFood(foodDatabase[fuzzyMatch]);
       } else {
+        startBottleSpin();
         setLoading(true);
         const apiBase = getApiBaseUrl();
         if (apiBase === null) {
+          stopBottleSpin();
           setError(
             "AI search is not configured. Set VITE_API_URL on your static site to your API URL (see DEPLOY-RENDER.md)."
           );
@@ -99,9 +134,10 @@ function MainComponent() {
           setSelectedFood(null);
         }
         setLoading(false);
+        stopBottleSpin();
       }
     },
-    []
+    [startBottleSpin, stopBottleSpin]
   );
 
   const handleSauceClick = useCallback((sauce) => {
@@ -427,6 +463,8 @@ function MainComponent() {
               </ul>
             )}
           </form>
+
+          <SpinningBottle spinning={bottleSpinning} />
 
           {loading && (
             <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
