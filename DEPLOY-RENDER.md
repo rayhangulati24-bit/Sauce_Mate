@@ -37,22 +37,25 @@ Deploy **two** services and connect them with env vars.
    - **GEMINI_API_KEY** = your Google AI (Gemini) API key from [AI Studio](https://aistudio.google.com/apikey) — this alone is enough; the API auto-uses Gemini when only this key is set.
    - Optional **AI_PROVIDER** = `gemini` or `openai` if you configure both keys.
    - **OPENAI_API_KEY** = only if you use ChatGPT instead of Gemini.
-   - Optional **GENERATED_FOOD_DB_FILE** = path to the saved AI-results JSON file (see **Persistent AI cache** below).
+   - **SUPABASE_URL** = your Supabase Project URL (same as `VITE_SUPABASE_URL`)
+   - **SUPABASE_SERVICE_ROLE_KEY** = `service_role` secret from Supabase → Settings → API (see **Persistent AI cache (Supabase)** below)
 5. Create the service. Note the URL, e.g. `https://sauce-mate-api.onrender.com`.
 
-#### Persistent AI cache (recommended for production)
+#### Persistent AI cache (Supabase — free tier)
 
-Without a persistent disk, the API saves Gemini results to a JSON file on the instance filesystem. That cache is **lost on every redeploy or restart**, so the same food will call Gemini again.
+AI search results are stored in Supabase table `ai_food_cache` (shared by all users). This works on **Render’s free plan** — no paid disk required.
 
-1. In the Render dashboard, open **sauce-mate-api** → **Disks** → **Add disk**.
-2. **Mount path:** `/var/data` (or another path you prefer).
-3. **Size:** 1 GB is enough.
-4. Add environment variable **GENERATED_FOOD_DB_FILE** = `/var/data/generatedFoodDatabase.json` (must be on the mounted disk).
-5. Redeploy the API service.
+1. Create a project at [supabase.com](https://supabase.com) (or use your existing one).
+2. Open **SQL Editor** → **New query**, paste the contents of [`supabase/migrations/001_ai_food_cache.sql`](supabase/migrations/001_ai_food_cache.sql), and **Run**.
+3. In **Project Settings** → **API**, copy:
+   - **Project URL** → `SUPABASE_URL` on the API service
+   - **service_role** key (secret) → `SUPABASE_SERVICE_ROLE_KEY` on the API service only  
+     Never put the service role key in the static site or frontend.
+4. Redeploy **sauce-mate-api** after adding those env vars.
 
-If you use the repo’s `render.yaml` Blueprint, the API service already includes a 1 GB disk at `/var/data` and sets `GENERATED_FOOD_DB_FILE` for you.
+**Verify:** `GET https://<your-api>/health` should show `"backend": "supabase"` and `entries` ≥ 1 after a new-food search. In Supabase **Table Editor** → `ai_food_cache`, you should see rows. API logs: `cache miss` then `cache hit` on repeat.
 
-**Verify cache on Render:** After searching for a new food once, call `GET https://<your-api>/health` — `generatedDatabase.entries` should be at least `1`. Search the same food again; API logs should show `cache hit` (no Gemini call). After a redeploy **with** the disk configured, repeat the search — `entries` should still be ≥ 1 and the second search should still be a cache hit.
+If Supabase env vars are missing, the API falls back to a local JSON file (cache lost on Render redeploy). See [`supabase/README.md`](supabase/README.md) for details.
 
 ### 2. Frontend (static site)
 
@@ -68,7 +71,7 @@ If you use the repo’s `render.yaml` Blueprint, the API service already include
 
 If you use **Blueprint** and apply `render.yaml`, it will create both services. You still need to set the env vars in the Render dashboard:
 
-- **sauce-mate-api:** `AI_PROVIDER`, `OPENAI_API_KEY` and/or `GEMINI_API_KEY`
+- **sauce-mate-api:** `GEMINI_API_KEY` (and/or OpenAI keys), `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
 - **sauce-mate:** `VITE_API_URL` = the API service URL
 
 ---
@@ -80,7 +83,9 @@ If you use **Blueprint** and apply `render.yaml`, it will create both services. 
 | sauce-mate-api | AI_PROVIDER      | `openai` or `gemini` |
 | sauce-mate-api | OPENAI_API_KEY   | OpenAI API key (for ChatGPT) |
 | sauce-mate-api | GEMINI_API_KEY   | Google AI API key (for Gemini) |
-| sauce-mate-api | GENERATED_FOOD_DB_FILE | Optional path for saved AI search results |
+| sauce-mate-api | SUPABASE_URL | Supabase project URL (AI cache) |
+| sauce-mate-api | SUPABASE_SERVICE_ROLE_KEY | Supabase service role secret (API only) |
+| sauce-mate-api | GENERATED_FOOD_DB_FILE | Optional local file fallback if Supabase not set |
 | sauce-mate     | VITE_API_URL     | Full API URL, e.g. `https://sauce-mate-api.onrender.com` |
 | sauce-mate     | VITE_SUPABASE_URL    | Supabase project URL (for sign-in) |
 | sauce-mate     | VITE_SUPABASE_ANON_KEY | Supabase anon/public key (for sign-in) |
@@ -114,6 +119,8 @@ cd server
 npm install
 OPENAI_API_KEY=sk-... npm start
 # or: GEMINI_API_KEY=... AI_PROVIDER=gemini npm start
+# With Supabase cache:
+# SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... GEMINI_API_KEY=... npm start
 ```
 
 **Terminal 2 – frontend:**

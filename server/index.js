@@ -1,110 +1,18 @@
 import express from "express";
 import cors from "cors";
-import { promises as fs } from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+import {
+  getGeneratedSuggestion,
+  saveGeneratedSuggestion,
+  getGeneratedCacheHealth,
+  normalizeSearchTerm,
+} from "./generatedCache.js";
 
 const app = express();
 app.use(cors({ origin: true }));
 app.use(express.json());
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const GENERATED_DB_FILE =
-  process.env.GENERATED_FOOD_DB_FILE ||
-  path.join(__dirname, "data", "generatedFoodDatabase.json");
-
-let generatedFoodDatabase = {};
-let generatedDatabaseWriteQueue = Promise.resolve();
 /** @type {Map<string, Promise<{ suggestions: unknown[] }>>} */
 const pendingSuggestions = new Map();
-
-/** Align with frontend foodDatabase matching: lowercase, no spaces. */
-function normalizeSearchTerm(term) {
-  return String(term || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "");
-}
-
-function rekeyGeneratedFoodDatabase() {
-  const next = {};
-  for (const [key, entry] of Object.entries(generatedFoodDatabase)) {
-    const normalizedKey =
-      normalizeSearchTerm(entry?.term) || normalizeSearchTerm(key);
-    if (!normalizedKey) continue;
-    if (!next[normalizedKey]) {
-      next[normalizedKey] = entry;
-    }
-  }
-  const changed =
-    Object.keys(next).length !== Object.keys(generatedFoodDatabase).length ||
-    Object.keys(next).some((k) => generatedFoodDatabase[k] !== next[k]);
-  generatedFoodDatabase = next;
-  return changed;
-}
-
-async function loadGeneratedFoodDatabase() {
-  try {
-    const raw = await fs.readFile(GENERATED_DB_FILE, "utf8");
-    const parsed = JSON.parse(raw);
-    generatedFoodDatabase =
-      parsed && typeof parsed === "object" && !Array.isArray(parsed)
-        ? parsed
-        : {};
-    if (rekeyGeneratedFoodDatabase()) {
-      generatedDatabaseWriteQueue = generatedDatabaseWriteQueue
-        .catch(() => {})
-        .then(writeGeneratedFoodDatabase);
-    }
-  } catch (e) {
-    if (e.code !== "ENOENT") {
-      console.warn("Could not load generated food database:", e.message);
-    }
-    generatedFoodDatabase = {};
-  }
-}
-
-async function writeGeneratedFoodDatabase() {
-  await fs.mkdir(path.dirname(GENERATED_DB_FILE), { recursive: true });
-  const tmpFile = `${GENERATED_DB_FILE}.tmp`;
-  await fs.writeFile(
-    tmpFile,
-    `${JSON.stringify(generatedFoodDatabase, null, 2)}\n`,
-    "utf8"
-  );
-  await fs.rename(tmpFile, GENERATED_DB_FILE);
-}
-
-const generatedDatabaseReady = loadGeneratedFoodDatabase();
-
-async function getGeneratedSuggestion(term) {
-  await generatedDatabaseReady;
-  return generatedFoodDatabase[normalizeSearchTerm(term)] || null;
-}
-
-async function saveGeneratedSuggestion(term, provider, payload) {
-  await generatedDatabaseReady;
-  const key = normalizeSearchTerm(term);
-  if (!key) return;
-
-  generatedFoodDatabase[key] = {
-    term: String(term).trim(),
-    source: "ai",
-    provider,
-    generatedAt: new Date().toISOString(),
-    suggestions: payload.suggestions,
-  };
-
-  generatedDatabaseWriteQueue = generatedDatabaseWriteQueue
-    .catch(() => {})
-    .then(writeGeneratedFoodDatabase);
-
-  try {
-    await generatedDatabaseWriteQueue;
-  } catch (e) {
-    console.warn("Could not save generated food database:", e.message);
-  }
-}
 
 const SYSTEM_PROMPT = `You are a helpful assistant that suggests food pairings. If the user's input contains inappropriate, offensive, or adult content, respond with {"suggestions":[]}. Otherwise, provide sauce suggestions as a JSON object with a single key "suggestions" whose value is an array of 3-4 objects. Each object must have: "name" (string), "description" (short string), "type" (string, e.g. "sauce" or "dip"), and "recipe" (detailed string). Return only valid JSON, no markdown or extra text.`;
 
@@ -395,8 +303,9 @@ app.get("/", (req, res) => {
   });
 });
 
-app.get("/health", (req, res) => {
+app.get("/health", async (req, res) => {
   const provider = resolveAiProvider();
+  const generatedDatabase = await getGeneratedCacheHealth();
   res.json({
     ok: true,
     ai: {
@@ -406,10 +315,7 @@ app.get("/health", (req, res) => {
         (provider === "openai" && Boolean(process.env.OPENAI_API_KEY)),
       geminiModels: provider === "gemini" ? geminiModelsToTry() : undefined,
     },
-    generatedDatabase: {
-      entries: Object.keys(generatedFoodDatabase).length,
-      file: GENERATED_DB_FILE,
-    },
+    generatedDatabase,
   });
 });
 

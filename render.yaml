@@ -25,11 +25,6 @@ services:
     rootDir: server
     buildCommand: npm ci
     startCommand: npm start
-    # Keeps AI search cache across redeploys (see DEPLOY-RENDER.md)
-    disk:
-      name: generated-food-cache
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
       - key: GEMINI_API_KEY
         sync: false
@@ -40,5 +35,9 @@ services:
       - key: OPENAI_API_KEY
         sync: false
         # Only if using ChatGPT instead of Gemini
-      - key: GENERATED_FOOD_DB_FILE
-        value: /var/data/generatedFoodDatabase.json
+      - key: SUPABASE_URL
+        sync: false
+        # Same Project URL as VITE_SUPABASE_URL (Settings → API)
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+        # service_role secret — API only, never on static site
