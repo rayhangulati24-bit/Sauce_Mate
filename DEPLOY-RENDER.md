@@ -37,8 +37,22 @@ Deploy **two** services and connect them with env vars.
    - **GEMINI_API_KEY** = your Google AI (Gemini) API key from [AI Studio](https://aistudio.google.com/apikey) — this alone is enough; the API auto-uses Gemini when only this key is set.
    - Optional **AI_PROVIDER** = `gemini` or `openai` if you configure both keys.
    - **OPENAI_API_KEY** = only if you use ChatGPT instead of Gemini.
-   - Optional **GENERATED_FOOD_DB_FILE** = path to the saved AI-results JSON file. If you add a Render persistent disk, point this at the disk mount path so generated results survive restarts and redeploys.
+   - Optional **GENERATED_FOOD_DB_FILE** = path to the saved AI-results JSON file (see **Persistent AI cache** below).
 5. Create the service. Note the URL, e.g. `https://sauce-mate-api.onrender.com`.
+
+#### Persistent AI cache (recommended for production)
+
+Without a persistent disk, the API saves Gemini results to a JSON file on the instance filesystem. That cache is **lost on every redeploy or restart**, so the same food will call Gemini again.
+
+1. In the Render dashboard, open **sauce-mate-api** → **Disks** → **Add disk**.
+2. **Mount path:** `/var/data` (or another path you prefer).
+3. **Size:** 1 GB is enough.
+4. Add environment variable **GENERATED_FOOD_DB_FILE** = `/var/data/generatedFoodDatabase.json` (must be on the mounted disk).
+5. Redeploy the API service.
+
+If you use the repo’s `render.yaml` Blueprint, the API service already includes a 1 GB disk at `/var/data` and sets `GENERATED_FOOD_DB_FILE` for you.
+
+**Verify cache on Render:** After searching for a new food once, call `GET https://<your-api>/health` — `generatedDatabase.entries` should be at least `1`. Search the same food again; API logs should show `cache hit` (no Gemini call). After a redeploy **with** the disk configured, repeat the search — `entries` should still be ≥ 1 and the second search should still be a cache hit.
 
 ### 2. Frontend (static site)
 
@@ -73,7 +87,7 @@ If you use **Blueprint** and apply `render.yaml`, it will create both services. 
 
 For Gemini only, set **GEMINI_API_KEY** on the API service (no `AI_PROVIDER` required). Set **VITE_API_URL** on the static site to your API URL and redeploy both services after changing env vars.
 
-Unknown food searches are saved by the API after the first successful AI response. Later searches for the same food return from that saved data instead of calling AI again.
+Unknown food searches are saved by the API after the first successful AI response. Later searches for the same food (any spacing/casing, e.g. `Dragon Fruit` or `dragonfruit`) return from that saved data instead of calling AI again. Server logs show `cache hit` or `cache miss` for each `/api/suggest-sauces` request.
 
 ---
 

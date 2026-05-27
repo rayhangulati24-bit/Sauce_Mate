@@ -15,9 +15,32 @@ const GENERATED_DB_FILE =
 
 let generatedFoodDatabase = {};
 let generatedDatabaseWriteQueue = Promise.resolve();
+/** @type {Map<string, Promise<{ suggestions: unknown[] }>>} */
+const pendingSuggestions = new Map();
 
+/** Align with frontend foodDatabase matching: lowercase, no spaces. */
 function normalizeSearchTerm(term) {
-  return String(term || "").trim().toLowerCase().replace(/\s+/g, " ");
+  return String(term || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "");
+}
+
+function rekeyGeneratedFoodDatabase() {
+  const next = {};
+  for (const [key, entry] of Object.entries(generatedFoodDatabase)) {
+    const normalizedKey =
+      normalizeSearchTerm(entry?.term) || normalizeSearchTerm(key);
+    if (!normalizedKey) continue;
+    if (!next[normalizedKey]) {
+      next[normalizedKey] = entry;
+    }
+  }
+  const changed =
+    Object.keys(next).length !== Object.keys(generatedFoodDatabase).length ||
+    Object.keys(next).some((k) => generatedFoodDatabase[k] !== next[k]);
+  generatedFoodDatabase = next;
+  return changed;
 }
 
 async function loadGeneratedFoodDatabase() {
@@ -28,6 +51,11 @@ async function loadGeneratedFoodDatabase() {
       parsed && typeof parsed === "object" && !Array.isArray(parsed)
         ? parsed
         : {};
+    if (rekeyGeneratedFoodDatabase()) {
+      generatedDatabaseWriteQueue = generatedDatabaseWriteQueue
+        .catch(() => {})
+        .then(writeGeneratedFoodDatabase);
+    }
   } catch (e) {
     if (e.code !== "ENOENT") {
       console.warn("Could not load generated food database:", e.message);
@@ -288,12 +316,33 @@ async function suggestWithGemini(term, apiKey) {
   throw err;
 }
 
+async function fetchSuggestionsFromAi(trimmedTerm, provider, openaiKey, geminiKey) {
+  if (provider === "gemini" && geminiKey) {
+    const raw = await suggestWithGemini(trimmedTerm, geminiKey);
+    const payload = normalizeSuggestionsPayload(raw);
+    await saveGeneratedSuggestion(trimmedTerm, provider, payload);
+    return payload;
+  }
+  if (provider === "openai" && openaiKey) {
+    const raw = await suggestWithOpenAI(trimmedTerm, openaiKey);
+    const payload = normalizeSuggestionsPayload(raw);
+    await saveGeneratedSuggestion(trimmedTerm, provider, payload);
+    return payload;
+  }
+  const err = new Error(
+    "No AI provider configured. Set GEMINI_API_KEY and/or OPENAI_API_KEY (optional AI_PROVIDER=openai|gemini). For Gemini-only, GEMINI_API_KEY is enough."
+  );
+  err.status = 503;
+  throw err;
+}
+
 app.post("/api/suggest-sauces", async (req, res) => {
   const term = req.body?.term;
   if (!term || typeof term !== "string") {
     return res.status(400).json({ error: "Missing or invalid 'term'" });
   }
   const trimmedTerm = term.trim();
+  const cacheKey = normalizeSearchTerm(trimmedTerm);
 
   const provider = resolveAiProvider();
   const openaiKey = process.env.OPENAI_API_KEY;
@@ -302,24 +351,27 @@ app.post("/api/suggest-sauces", async (req, res) => {
   try {
     const cached = await getGeneratedSuggestion(trimmedTerm);
     if (cached) {
+      console.log(`[suggest-sauces] cache hit: "${trimmedTerm}" (key: ${cacheKey})`);
       return res.json(normalizeSuggestionsPayload(cached));
     }
 
-    if (provider === "gemini" && geminiKey) {
-      const raw = await suggestWithGemini(trimmedTerm, geminiKey);
-      const payload = normalizeSuggestionsPayload(raw);
-      await saveGeneratedSuggestion(trimmedTerm, provider, payload);
-      return res.json(payload);
+    console.log(`[suggest-sauces] cache miss: "${trimmedTerm}" (key: ${cacheKey})`);
+
+    let pending = pendingSuggestions.get(cacheKey);
+    if (!pending) {
+      pending = fetchSuggestionsFromAi(
+        trimmedTerm,
+        provider,
+        openaiKey,
+        geminiKey
+      ).finally(() => {
+        pendingSuggestions.delete(cacheKey);
+      });
+      pendingSuggestions.set(cacheKey, pending);
     }
-    if (provider === "openai" && openaiKey) {
-      const raw = await suggestWithOpenAI(trimmedTerm, openaiKey);
-      const payload = normalizeSuggestionsPayload(raw);
-      await saveGeneratedSuggestion(trimmedTerm, provider, payload);
-      return res.json(payload);
-    }
-    return res.status(503).json({
-      error: "No AI provider configured. Set GEMINI_API_KEY and/or OPENAI_API_KEY (optional AI_PROVIDER=openai|gemini). For Gemini-only, GEMINI_API_KEY is enough.",
-    });
+
+    const payload = await pending;
+    return res.json(payload);
   } catch (e) {
     console.error(e);
     const status = e.status && e.status >= 400 && e.status < 600 ? e.status : 500;
