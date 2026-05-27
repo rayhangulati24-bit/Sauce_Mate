@@ -144,6 +144,7 @@ function normalizeSuggestionsPayload(parsed) {
 const DEFAULT_GEMINI_MODELS = [
   "gemini-2.5-flash",
   "gemini-2.5-flash-lite",
+  "gemini-2.0-flash",
   "gemini-1.5-flash",
 ];
 
@@ -152,29 +153,56 @@ function geminiModelsToTry() {
     .split(",")
     .map((m) => m.trim().replace(/^models\//, ""))
     .filter(Boolean);
-  return fromEnv.length > 0 ? fromEnv : DEFAULT_GEMINI_MODELS;
+  if (fromEnv.length === 0) return DEFAULT_GEMINI_MODELS;
+  const seen = new Set(fromEnv);
+  const fallbacks = DEFAULT_GEMINI_MODELS.filter((m) => !seen.has(m));
+  return [...fromEnv, ...fallbacks];
+}
+
+function parseGeminiErrorBody(body) {
+  if (!body) return "";
+  try {
+    const parsed = JSON.parse(body);
+    return String(parsed?.error?.message || parsed?.error?.status || "").trim();
+  } catch {
+    return String(body).trim();
+  }
+}
+
+/** Transient failures (overload, quota, timeouts) — try the next Gemini model. */
+function isRetryableGeminiError(status, body) {
+  const message = parseGeminiErrorBody(body);
+  const code = Number(status) || 0;
+  if ([429, 500, 502, 503, 504].includes(code)) return true;
+  return /quota|RESOURCE_EXHAUSTED|rate.?limit|overload|overloaded|UNAVAILABLE|high demand|try again|capacity|temporarily unavailable/i.test(
+    message
+  );
 }
 
 function formatGeminiError(status, body) {
-  let message = "";
-  try {
-    const parsed = JSON.parse(body);
-    message = parsed?.error?.message || "";
-  } catch {
-    message = body;
-  }
+  const message = parseGeminiErrorBody(body);
+  const code = Number(status) || 502;
   const quotaHit =
-    status === 429 ||
+    code === 429 ||
     /quota|RESOURCE_EXHAUSTED|rate.?limit/i.test(message);
+  const overloadHit =
+    code === 503 ||
+    /overload|overloaded|UNAVAILABLE|high demand/i.test(message);
   if (quotaHit) {
     return {
       status: 429,
       message:
-        "Gemini free tier limit reached for this model. Wait a minute and try again. On Render, set GEMINI_MODEL=gemini-2.5-flash-lite (or enable billing in Google AI Studio).",
+        "Gemini is busy or rate-limited. Wait a moment and try again.",
+    };
+  }
+  if (overloadHit) {
+    return {
+      status: 503,
+      message: "Gemini is overloaded right now. Please try again in a moment.",
     };
   }
   return {
-    status: status >= 400 && status < 600 ? status : 502,
+    status: code >= 400 && code < 600 ? code : 502,
     message: message
       ? `Gemini error: ${message.slice(0, 200)}`
       : "Gemini request failed. Check your API key and model name.",
@@ -226,18 +254,26 @@ async function suggestWithGeminiOneModel(term, apiKey, model) {
 
 async function suggestWithGemini(term, apiKey) {
   const models = geminiModelsToTry();
-  let lastQuotaError = null;
+  let lastRetryableError = null;
 
   for (const model of models) {
     try {
-      return await suggestWithGeminiOneModel(term, apiKey, model);
+      const result = await suggestWithGeminiOneModel(term, apiKey, model);
+      if (models.length > 1) {
+        console.log(`Gemini suggestions via ${model}`);
+      }
+      return result;
     } catch (e) {
-      const formatted = formatGeminiError(e.status || 500, e.message || "");
-      if (formatted.status === 429) {
-        lastQuotaError = formatted;
-        console.warn(`Gemini model ${model} quota exceeded, trying next…`);
+      const status = e.status || 500;
+      const body = e.message || "";
+      if (isRetryableGeminiError(status, body)) {
+        lastRetryableError = formatGeminiError(status, body);
+        console.warn(
+          `Gemini model ${model} unavailable (${status}), trying next model…`
+        );
         continue;
       }
+      const formatted = formatGeminiError(status, body);
       const err = new Error(formatted.message);
       err.status = formatted.status;
       throw err;
@@ -245,10 +281,10 @@ async function suggestWithGemini(term, apiKey) {
   }
 
   const err = new Error(
-    lastQuotaError?.message ||
-      "All Gemini models are unavailable. Check your Google AI Studio quota."
+    lastRetryableError?.message ||
+      "All Gemini models are busy. Please try again in a minute."
   );
-  err.status = 429;
+  err.status = lastRetryableError?.status || 503;
   throw err;
 }
 
