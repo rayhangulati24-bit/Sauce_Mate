@@ -1,7 +1,12 @@
 import { createClient } from "@supabase/supabase-js";
+import { WebSocket as NodeWebSocket } from "ws";
 import { promises as fs } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+
+if (!globalThis.WebSocket) {
+  globalThis.WebSocket = NodeWebSocket;
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const GENERATED_DB_FILE =
