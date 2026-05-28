@@ -15,6 +15,10 @@ let generatedDatabaseWriteQueue = Promise.resolve();
 let supabase = null;
 let cacheBackend = "file";
 let supabaseEntryCount = null;
+let supabaseConfiguredFromEnv = false;
+let supabaseUrlHost = null;
+let supabaseKeyRole = null;
+let lastSupabaseError = null;
 
 /** Align with frontend foodDatabase matching: lowercase, no spaces. */
 export function normalizeSearchTerm(term) {
@@ -31,16 +35,47 @@ function normalizeSupabaseUrl(url) {
   return u.replace(/\/+$/, "");
 }
 
+function decodeJwtPayload(token) {
+  try {
+    const parts = String(token || "").split(".");
+    if (parts.length < 2) return null;
+    const payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = payload.padEnd(Math.ceil(payload.length / 4) * 4, "=");
+    const decoded = Buffer.from(padded, "base64").toString("utf8");
+    return JSON.parse(decoded);
+  } catch {
+    return null;
+  }
+}
+
 function createSupabaseAdmin() {
-  const url = normalizeSupabaseUrl(process.env.SUPABASE_URL || "");
+  const url = normalizeSupabaseUrl(
+    process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || ""
+  );
   const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
-  if (!url || !key) return null;
+  supabaseConfiguredFromEnv = Boolean(url || key);
+  supabaseUrlHost = url ? new URL(url).host : null;
+  const payload = decodeJwtPayload(key);
+  supabaseKeyRole = payload?.role || null;
+
+  if (!url || !key) {
+    if (supabaseConfiguredFromEnv) {
+      lastSupabaseError =
+        "Missing SUPABASE_URL/VITE_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.";
+    }
+    return null;
+  }
+  if (supabaseKeyRole && supabaseKeyRole !== "service_role") {
+    lastSupabaseError = `Invalid Supabase key role "${supabaseKeyRole}". Use SUPABASE_SERVICE_ROLE_KEY (service_role), not anon key.`;
+    return null;
+  }
   try {
     return createClient(url, key, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
   } catch (e) {
-    console.warn("Supabase client init failed:", e.message);
+    lastSupabaseError = `Supabase client init failed: ${e.message}`;
+    console.warn(lastSupabaseError);
     return null;
   }
 }
@@ -122,9 +157,11 @@ async function migrateFileCacheToSupabase() {
     onConflict: "search_key",
   });
   if (error) {
-    console.warn("Could not migrate file cache to Supabase:", error.message);
+    lastSupabaseError = `Could not migrate file cache to Supabase: ${error.message}`;
+    console.warn(lastSupabaseError);
     return;
   }
+  lastSupabaseError = null;
   console.log(`Migrated ${rows.length} file cache entries to Supabase`);
 }
 
@@ -137,10 +174,12 @@ async function refreshSupabaseEntryCount() {
     .from(TABLE)
     .select("*", { count: "exact", head: true });
   if (error) {
-    console.warn("Could not count Supabase cache entries:", error.message);
+    lastSupabaseError = `Could not count Supabase cache entries: ${error.message}`;
+    console.warn(lastSupabaseError);
     supabaseEntryCount = null;
     return;
   }
+  lastSupabaseError = null;
   supabaseEntryCount = count ?? 0;
 }
 
@@ -152,6 +191,16 @@ const generatedDatabaseReady = (async () => {
     await loadGeneratedFoodDatabaseFromFile();
     await migrateFileCacheToSupabase();
     await refreshSupabaseEntryCount();
+    return;
+  }
+  if (supabaseConfiguredFromEnv) {
+    cacheBackend = "supabase_misconfigured";
+    console.warn(
+      `AI cache backend misconfigured${
+        lastSupabaseError ? `: ${lastSupabaseError}` : "."
+      }`
+    );
+    await loadGeneratedFoodDatabaseFromFile();
     return;
   }
   cacheBackend = "file";
@@ -169,9 +218,11 @@ async function getGeneratedSuggestionFromSupabase(searchKey) {
     .maybeSingle();
 
   if (error) {
-    console.warn("Supabase cache read failed:", error.message);
+    lastSupabaseError = `Supabase cache read failed: ${error.message}`;
+    console.warn(lastSupabaseError);
     return null;
   }
+  lastSupabaseError = null;
   return rowToCacheEntry(data);
 }
 
@@ -194,9 +245,11 @@ async function saveGeneratedSuggestionToSupabase(
     onConflict: "search_key",
   });
   if (error) {
-    console.warn("Supabase cache write failed:", error.message);
+    lastSupabaseError = `Supabase cache write failed: ${error.message}`;
+    console.warn(lastSupabaseError);
     return false;
   }
+  lastSupabaseError = null;
   await refreshSupabaseEntryCount();
   return true;
 }
@@ -235,6 +288,17 @@ export async function saveGeneratedSuggestion(term, provider, payload) {
       payload
     );
     if (saved) return;
+    throw new Error(
+      lastSupabaseError ||
+        "Supabase cache write failed. Check API env vars and table setup."
+    );
+  }
+
+  if (supabaseConfiguredFromEnv) {
+    throw new Error(
+      lastSupabaseError ||
+        "Supabase is configured but unavailable. Fix Supabase config on API service."
+    );
   }
 
   generatedFoodDatabase[searchKey] = entry;
@@ -261,6 +325,23 @@ export async function getGeneratedCacheHealth() {
       table: TABLE,
       entries: supabaseEntryCount ?? 0,
       fileFallback: GENERATED_DB_FILE,
+      supabaseConfigured: supabaseConfiguredFromEnv,
+      supabaseUrlHost,
+      supabaseKeyRole,
+      lastError: lastSupabaseError,
+    };
+  }
+
+  if (cacheBackend === "supabase_misconfigured") {
+    return {
+      backend: "supabase_misconfigured",
+      table: TABLE,
+      entries: Object.keys(generatedFoodDatabase).length,
+      fileFallback: GENERATED_DB_FILE,
+      supabaseConfigured: supabaseConfiguredFromEnv,
+      supabaseUrlHost,
+      supabaseKeyRole,
+      lastError: lastSupabaseError,
     };
   }
 
@@ -268,5 +349,9 @@ export async function getGeneratedCacheHealth() {
     backend: "file",
     entries: Object.keys(generatedFoodDatabase).length,
     file: GENERATED_DB_FILE,
+    supabaseConfigured: supabaseConfiguredFromEnv,
+    supabaseUrlHost,
+    supabaseKeyRole,
+    lastError: lastSupabaseError,
   };
 }
