@@ -2,12 +2,16 @@
 
 Stores Gemini/OpenAI sauce suggestions so repeat searches do not call AI again. **One shared cache for all users** (not per-account).
 
+- **`ai_food_cache`** — standard pairings
+- **`ai_experimental_cache`** — experimental mode pairings (separate table)
+
 ## Setup (one time)
 
 1. Open your project at [supabase.com](https://supabase.com).
 2. Go to **SQL Editor** → **New query**.
 3. Copy and run [`migrations/001_ai_food_cache.sql`](migrations/001_ai_food_cache.sql).
-4. Go to **Project Settings** → **API** and copy:
+4. Copy and run [`migrations/002_ai_experimental_cache.sql`](migrations/002_ai_experimental_cache.sql).
+5. Go to **Project Settings** → **API** and copy:
    - **Project URL**
    - **service_role** key (under *Project API keys* — keep this secret)
 
@@ -37,12 +41,15 @@ npm start
 ## Verify
 
 1. `curl -s https://YOUR-API.onrender.com/health`  
-   Expect: `"generatedDatabase": { "backend": "supabase", "table": "ai_food_cache", "entries": N }`
+   Expect: `"generatedDatabase": { "backend": "supabase", "table": "ai_food_cache", "experimentalTable": "ai_experimental_cache", "entries": N, "experimentalEntries": M }`
 2. Search a food not in the built-in list (e.g. `dragon fruit`).
 3. In Supabase **Table Editor** → `ai_food_cache` — a new row should appear.
-4. Search again — API logs show `cache hit`.
+4. Toggle **Experimental mode** and search again — row appears in `ai_experimental_cache`.
+5. Search again — API logs show `cache hit`.
 
 ## Table schema
+
+Both tables share the same columns:
 
 | Column | Type | Notes |
 |--------|------|--------|
@@ -51,5 +58,7 @@ npm start
 | `provider` | text | `gemini` or `openai` |
 | `suggestions` | jsonb | Array of sauce objects |
 | `generated_at` | timestamptz | When cached |
+
+`ai_experimental_cache` holds experimental-mode results only. The API routes to the correct table automatically.
 
 RLS is enabled with no public policies; only the service role (server) can read/write.

@@ -14,12 +14,14 @@ const GENERATED_DB_FILE =
   path.join(__dirname, "data", "generatedFoodDatabase.json");
 
 const TABLE = "ai_food_cache";
+const EXPERIMENTAL_TABLE = "ai_experimental_cache";
 
 let generatedFoodDatabase = {};
 let generatedDatabaseWriteQueue = Promise.resolve();
 let supabase = null;
 let cacheBackend = "file";
 let supabaseEntryCount = null;
+let supabaseExperimentalEntryCount = null;
 let supabaseConfiguredFromEnv = false;
 let supabaseUrlHost = null;
 let supabaseKeyRole = null;
@@ -33,10 +35,24 @@ export function normalizeSearchTerm(term) {
     .replace(/\s+/g, "");
 }
 
+/** File-cache key (legacy `:experimental` suffix). */
 function cacheSearchKey(term, experimental = false) {
   const base = normalizeSearchTerm(term);
   if (!base) return "";
   return experimental ? `${base}:experimental` : base;
+}
+
+/** Supabase key — experimental rows live in ai_experimental_cache (no suffix). */
+function supabaseSearchKey(term) {
+  return normalizeSearchTerm(term);
+}
+
+function tableForExperimental(experimental = false) {
+  return experimental ? EXPERIMENTAL_TABLE : TABLE;
+}
+
+function isExperimentalFileKey(searchKey) {
+  return String(searchKey || "").endsWith(":experimental");
 }
 
 function normalizeSupabaseUrl(url) {
@@ -155,50 +171,86 @@ async function migrateFileCacheToSupabase() {
   const entries = Object.entries(generatedFoodDatabase);
   if (!supabase || entries.length === 0) return;
 
-  const rows = entries.map(([searchKey, entry]) => ({
-    search_key: normalizeSearchTerm(entry?.term) || searchKey,
-    term: String(entry.term || searchKey).trim(),
-    source: entry.source || "ai",
-    provider: entry.provider || "unknown",
-    suggestions: entry.suggestions ?? [],
-    generated_at: entry.generatedAt || new Date().toISOString(),
-  }));
+  const standardRows = [];
+  const experimentalRows = [];
 
-  const { error } = await supabase.from(TABLE).upsert(rows, {
-    onConflict: "search_key",
-  });
-  if (error) {
-    lastSupabaseError = `Could not migrate file cache to Supabase: ${error.message}`;
-    console.warn(lastSupabaseError);
-    return;
+  for (const [searchKey, entry] of entries) {
+    const experimental = isExperimentalFileKey(searchKey);
+    const row = {
+      search_key:
+        normalizeSearchTerm(entry?.term) ||
+        searchKey.replace(/:experimental$/, ""),
+      term: String(entry.term || searchKey).trim(),
+      source: entry.source || "ai",
+      provider: entry.provider || "unknown",
+      suggestions: entry.suggestions ?? [],
+      generated_at: entry.generatedAt || new Date().toISOString(),
+    };
+    if (experimental) {
+      experimentalRows.push(row);
+    } else {
+      standardRows.push(row);
+    }
   }
+
+  if (standardRows.length > 0) {
+    const { error } = await supabase.from(TABLE).upsert(standardRows, {
+      onConflict: "search_key",
+    });
+    if (error) {
+      lastSupabaseError = `Could not migrate file cache to Supabase: ${error.message}`;
+      console.warn(lastSupabaseError);
+      return;
+    }
+  }
+
+  if (experimentalRows.length > 0) {
+    const { error } = await supabase.from(EXPERIMENTAL_TABLE).upsert(experimentalRows, {
+      onConflict: "search_key",
+    });
+    if (error) {
+      lastSupabaseError = `Could not migrate experimental file cache to Supabase: ${error.message}`;
+      console.warn(lastSupabaseError);
+      return;
+    }
+  }
+
   lastSupabaseError = null;
-  console.log(`Migrated ${rows.length} file cache entries to Supabase`);
+  console.log(
+    `Migrated ${standardRows.length} standard and ${experimentalRows.length} experimental file cache entries to Supabase`
+  );
 }
 
 async function refreshSupabaseEntryCount() {
   if (!supabase) {
     supabaseEntryCount = null;
+    supabaseExperimentalEntryCount = null;
     return;
   }
-  const { count, error } = await supabase
-    .from(TABLE)
-    .select("*", { count: "exact", head: true });
-  if (error) {
-    lastSupabaseError = `Could not count Supabase cache entries: ${error.message}`;
+  const [standard, experimental] = await Promise.all([
+    supabase.from(TABLE).select("*", { count: "exact", head: true }),
+    supabase.from(EXPERIMENTAL_TABLE).select("*", { count: "exact", head: true }),
+  ]);
+  if (standard.error || experimental.error) {
+    const message = standard.error?.message || experimental.error?.message;
+    lastSupabaseError = `Could not count Supabase cache entries: ${message}`;
     console.warn(lastSupabaseError);
     supabaseEntryCount = null;
+    supabaseExperimentalEntryCount = null;
     return;
   }
   lastSupabaseError = null;
-  supabaseEntryCount = count ?? 0;
+  supabaseEntryCount = standard.count ?? 0;
+  supabaseExperimentalEntryCount = experimental.count ?? 0;
 }
 
 const generatedDatabaseReady = (async () => {
   supabase = createSupabaseAdmin();
   if (supabase) {
     cacheBackend = "supabase";
-    console.log("AI cache backend: Supabase (ai_food_cache)");
+    console.log(
+      "AI cache backend: Supabase (ai_food_cache + ai_experimental_cache)"
+    );
     await loadGeneratedFoodDatabaseFromFile();
     await migrateFileCacheToSupabase();
     await refreshSupabaseEntryCount();
@@ -221,9 +273,9 @@ const generatedDatabaseReady = (async () => {
   await loadGeneratedFoodDatabaseFromFile();
 })();
 
-async function getGeneratedSuggestionFromSupabase(searchKey) {
+async function getGeneratedSuggestionFromSupabase(searchKey, experimental = false) {
   const { data, error } = await supabase
-    .from(TABLE)
+    .from(tableForExperimental(experimental))
     .select("term, source, provider, suggestions, generated_at")
     .eq("search_key", searchKey)
     .maybeSingle();
@@ -241,7 +293,8 @@ async function saveGeneratedSuggestionToSupabase(
   searchKey,
   term,
   provider,
-  payload
+  payload,
+  experimental = false
 ) {
   const row = {
     search_key: searchKey,
@@ -252,7 +305,7 @@ async function saveGeneratedSuggestionToSupabase(
     generated_at: new Date().toISOString(),
   };
 
-  const { error } = await supabase.from(TABLE).upsert(row, {
+  const { error } = await supabase.from(tableForExperimental(experimental)).upsert(row, {
     onConflict: "search_key",
   });
   if (error) {
@@ -267,21 +320,24 @@ async function saveGeneratedSuggestionToSupabase(
 
 export async function getGeneratedSuggestion(term, experimental = false) {
   await generatedDatabaseReady;
-  const searchKey = cacheSearchKey(term, experimental);
-  if (!searchKey) return null;
+  const fileKey = cacheSearchKey(term, experimental);
+  if (!fileKey) return null;
 
   if (supabase) {
-    const fromDb = await getGeneratedSuggestionFromSupabase(searchKey);
+    const fromDb = await getGeneratedSuggestionFromSupabase(
+      supabaseSearchKey(term),
+      experimental
+    );
     if (fromDb) return fromDb;
   }
 
-  return generatedFoodDatabase[searchKey] || null;
+  return generatedFoodDatabase[fileKey] || null;
 }
 
 export async function saveGeneratedSuggestion(term, provider, payload, experimental = false) {
   await generatedDatabaseReady;
-  const searchKey = cacheSearchKey(term, experimental);
-  if (!searchKey) return;
+  const fileKey = cacheSearchKey(term, experimental);
+  if (!fileKey) return;
 
   const entry = {
     term: String(term).trim(),
@@ -293,10 +349,11 @@ export async function saveGeneratedSuggestion(term, provider, payload, experimen
 
   if (supabase) {
     const saved = await saveGeneratedSuggestionToSupabase(
-      searchKey,
+      supabaseSearchKey(term),
       term,
       provider,
-      payload
+      payload,
+      experimental
     );
     if (saved) return;
     throw new Error(
@@ -312,7 +369,7 @@ export async function saveGeneratedSuggestion(term, provider, payload, experimen
     );
   }
 
-  generatedFoodDatabase[searchKey] = entry;
+  generatedFoodDatabase[fileKey] = entry;
   generatedDatabaseWriteQueue = generatedDatabaseWriteQueue
     .catch(() => {})
     .then(writeGeneratedFoodDatabase);
@@ -334,7 +391,9 @@ export async function getGeneratedCacheHealth() {
     return {
       backend: "supabase",
       table: TABLE,
+      experimentalTable: EXPERIMENTAL_TABLE,
       entries: supabaseEntryCount ?? 0,
+      experimentalEntries: supabaseExperimentalEntryCount ?? 0,
       fileFallback: GENERATED_DB_FILE,
       supabaseConfigured: supabaseConfiguredFromEnv,
       supabaseUrlHost,
@@ -347,7 +406,11 @@ export async function getGeneratedCacheHealth() {
     return {
       backend: "supabase_misconfigured",
       table: TABLE,
+      experimentalTable: EXPERIMENTAL_TABLE,
       entries: Object.keys(generatedFoodDatabase).length,
+      experimentalEntries: Object.keys(generatedFoodDatabase).filter(
+        isExperimentalFileKey
+      ).length,
       fileFallback: GENERATED_DB_FILE,
       supabaseConfigured: supabaseConfiguredFromEnv,
       supabaseUrlHost,

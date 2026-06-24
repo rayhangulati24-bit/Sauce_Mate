@@ -43,17 +43,18 @@ Deploy **two** services and connect them with env vars.
 
 #### Persistent AI cache (Supabase — free tier)
 
-AI search results are stored in Supabase table `ai_food_cache` (shared by all users). This works on **Render’s free plan** — no paid disk required.
+AI search results are stored in Supabase tables `ai_food_cache` (standard) and `ai_experimental_cache` (experimental mode), shared by all users. This works on **Render’s free plan** — no paid disk required.
 
 1. Create a project at [supabase.com](https://supabase.com) (or use your existing one).
 2. Open **SQL Editor** → **New query**, paste the contents of [`supabase/migrations/001_ai_food_cache.sql`](supabase/migrations/001_ai_food_cache.sql), and **Run**.
-3. In **Project Settings** → **API**, copy:
+3. Run [`supabase/migrations/002_ai_experimental_cache.sql`](supabase/migrations/002_ai_experimental_cache.sql) the same way.
+4. In **Project Settings** → **API**, copy:
    - **Project URL** → `SUPABASE_URL` on the API service
    - **service_role** key (secret) → `SUPABASE_SERVICE_ROLE_KEY` on the API service only  
      Never put the service role key in the static site or frontend.
 4. Redeploy **sauce-mate-api** after adding those env vars.
 
-**Verify:** `GET https://<your-api>/health` should show `"backend": "supabase"` and `entries` ≥ 1 after a new-food search. In Supabase **Table Editor** → `ai_food_cache`, you should see rows. API logs: `cache miss` then `cache hit` on repeat.
+**Verify:** `GET https://<your-api>/health` should show `"backend": "supabase"` and `entries` ≥ 1 after a new-food search. In Supabase **Table Editor** → `ai_food_cache` or `ai_experimental_cache`, you should see rows. API logs: `cache miss` then `cache hit` on repeat.
 
 If Supabase env vars are missing, the API falls back to a local JSON file (cache lost on Render redeploy). See [`supabase/README.md`](supabase/README.md) for details.
 
