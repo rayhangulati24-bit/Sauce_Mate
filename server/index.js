@@ -16,7 +16,17 @@ const pendingSuggestions = new Map();
 
 const SYSTEM_PROMPT = `You are a helpful assistant that suggests food pairings. If the user's input contains inappropriate, offensive, or adult content, respond with {"suggestions":[]}. Otherwise, provide sauce suggestions as a JSON object with a single key "suggestions" whose value is an array of 3-4 objects. Each object must have: "name" (string), "description" (short string), "type" (string, e.g. "sauce" or "dip"), and "recipe" (detailed string). Return only valid JSON, no markdown or extra text.`;
 
-async function suggestWithOpenAI(term, apiKey) {
+const EXPERIMENTAL_SYSTEM_PROMPT = `You are a bold, creative chef assistant specializing in unexpected sauce pairings. If the user's input contains inappropriate, offensive, or adult content, respond with {"suggestions":[]}. Otherwise, suggest 3-4 adventurous, fusion, or unconventional sauce pairings as a JSON object with a single key "suggestions" whose value is an array of objects. Each object must have: "name" (string), "description" (short string), "type" (string, e.g. "sauce" or "dip"), and "recipe" (detailed string). Favor surprising flavor combinations. Return only valid JSON, no markdown or extra text.`;
+
+function buildUserPrompt(term, experimental) {
+  const style = experimental
+    ? "Suggest 3-4 bold, unconventional or fusion sauce pairings for"
+    : "Suggest 3-4 sauce or condiment pairings for";
+  return `${style}: ${term}. Return only a JSON object with key "suggestions" and an array of objects with name, description, type, recipe.`;
+}
+
+async function suggestWithOpenAI(term, apiKey, experimental = false) {
+  const systemPrompt = experimental ? EXPERIMENTAL_SYSTEM_PROMPT : SYSTEM_PROMPT;
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -26,10 +36,10 @@ async function suggestWithOpenAI(term, apiKey) {
     body: JSON.stringify({
       model: "gpt-4o-mini",
       messages: [
-        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: systemPrompt },
         {
           role: "user",
-          content: `Suggest 3-4 sauce or condiment pairings for: ${term}. Return only a JSON object with key "suggestions" and an array of objects with name, description, type, recipe.`,
+          content: buildUserPrompt(term, experimental),
         },
       ],
       response_format: { type: "json_object" },
@@ -145,7 +155,8 @@ function formatGeminiError(status, body) {
   };
 }
 
-async function suggestWithGeminiOneModel(term, apiKey, model) {
+async function suggestWithGeminiOneModel(term, apiKey, model, experimental = false) {
+  const systemPrompt = experimental ? EXPERIMENTAL_SYSTEM_PROMPT : SYSTEM_PROMPT;
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
       model
@@ -162,13 +173,13 @@ async function suggestWithGeminiOneModel(term, apiKey, model) {
             role: "user",
             parts: [
               {
-                text: `${SYSTEM_PROMPT}\n\nUser request: Suggest 3-4 sauce or condiment pairings for: ${term}. Return only a JSON object with key "suggestions" and an array of objects with name, description, type, recipe. No markdown.`,
+                text: `${systemPrompt}\n\nUser request: ${buildUserPrompt(term, experimental)} No markdown.`,
               },
             ],
           },
         ],
         generationConfig: {
-          temperature: 0.7,
+          temperature: experimental ? 0.9 : 0.7,
           maxOutputTokens: 1024,
           responseMimeType: "application/json",
         },
@@ -188,13 +199,13 @@ async function suggestWithGeminiOneModel(term, apiKey, model) {
   return JSON.parse(text);
 }
 
-async function suggestWithGemini(term, apiKey) {
+async function suggestWithGemini(term, apiKey, experimental = false) {
   const models = geminiModelsToTry();
   let lastRetryableError = null;
 
   for (const model of models) {
     try {
-      const result = await suggestWithGeminiOneModel(term, apiKey, model);
+      const result = await suggestWithGeminiOneModel(term, apiKey, model, experimental);
       if (models.length > 1) {
         console.log(`Gemini suggestions via ${model}`);
       }
@@ -224,17 +235,17 @@ async function suggestWithGemini(term, apiKey) {
   throw err;
 }
 
-async function fetchSuggestionsFromAi(trimmedTerm, provider, openaiKey, geminiKey) {
+async function fetchSuggestionsFromAi(trimmedTerm, provider, openaiKey, geminiKey, experimental = false) {
   if (provider === "gemini" && geminiKey) {
-    const raw = await suggestWithGemini(trimmedTerm, geminiKey);
+    const raw = await suggestWithGemini(trimmedTerm, geminiKey, experimental);
     const payload = normalizeSuggestionsPayload(raw);
-    await saveGeneratedSuggestion(trimmedTerm, provider, payload);
+    await saveGeneratedSuggestion(trimmedTerm, provider, payload, experimental);
     return payload;
   }
   if (provider === "openai" && openaiKey) {
-    const raw = await suggestWithOpenAI(trimmedTerm, openaiKey);
+    const raw = await suggestWithOpenAI(trimmedTerm, openaiKey, experimental);
     const payload = normalizeSuggestionsPayload(raw);
-    await saveGeneratedSuggestion(trimmedTerm, provider, payload);
+    await saveGeneratedSuggestion(trimmedTerm, provider, payload, experimental);
     return payload;
   }
   const err = new Error(
@@ -249,15 +260,18 @@ app.post("/api/suggest-sauces", async (req, res) => {
   if (!term || typeof term !== "string") {
     return res.status(400).json({ error: "Missing or invalid 'term'" });
   }
+  const experimental = Boolean(req.body?.experimental);
   const trimmedTerm = term.trim();
-  const cacheKey = normalizeSearchTerm(trimmedTerm);
+  const cacheKey = experimental
+    ? `${normalizeSearchTerm(trimmedTerm)}:experimental`
+    : normalizeSearchTerm(trimmedTerm);
 
   const provider = resolveAiProvider();
   const openaiKey = process.env.OPENAI_API_KEY;
   const geminiKey = process.env.GEMINI_API_KEY;
 
   try {
-    const cached = await getGeneratedSuggestion(trimmedTerm);
+    const cached = await getGeneratedSuggestion(trimmedTerm, experimental);
     if (cached) {
       console.log(`[suggest-sauces] cache hit: "${trimmedTerm}" (key: ${cacheKey})`);
       return res.json(normalizeSuggestionsPayload(cached));
@@ -271,7 +285,8 @@ app.post("/api/suggest-sauces", async (req, res) => {
         trimmedTerm,
         provider,
         openaiKey,
-        geminiKey
+        geminiKey,
+        experimental
       ).finally(() => {
         pendingSuggestions.delete(cacheKey);
       });

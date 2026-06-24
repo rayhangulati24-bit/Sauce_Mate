@@ -17,3 +17,19 @@
     transform: rotate(-360deg);
   }
 }
+
+@keyframes experimental-pulse {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.experimental-pulse {
+  animation: experimental-pulse 0.45s ease-out;
+}

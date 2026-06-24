@@ -3,6 +3,7 @@ import React, { useState, useCallback, useMemo, useRef, useEffect } from "react"
 import { useAuth } from "../contexts/AuthContext";
 import { foodDatabase } from "../data/foodDatabase";
 import SpinningBottle from "./SpinningBottle";
+import ExperimentalModeToggle from "./ExperimentalModeToggle";
 import menuIcon from "../assets/menu-icon.png";
 
 /** Convert a key like "fishFingers" to "Fish Fingers" */
@@ -32,6 +33,27 @@ function readSavedSauces(user) {
   } catch {
     return [];
   }
+}
+
+function readExperimentalMode() {
+  try {
+    return localStorage.getItem("saucemate:experimentalMode") === "true";
+  } catch {
+    return false;
+  }
+}
+
+/** Blend experimental pairings into a suggestion list when mode is on. */
+function withExperimentalSuggestions(suggestions, experimentalMode) {
+  if (!experimentalMode || !Array.isArray(suggestions)) return suggestions;
+  const experimental = foodDatabase.experimentalPairings?.suggestions || [];
+  const names = new Set(suggestions.map((s) => s.name?.toLowerCase()));
+  const extras = experimental
+    .filter((s) => !names.has(s.name?.toLowerCase()))
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 2)
+    .map((s) => ({ ...s, experimental: true }));
+  return [...suggestions, ...extras];
 }
 
 function MainComponent() {
@@ -68,6 +90,15 @@ function MainComponent() {
   const [savedSauces, setSavedSauces] = useState(() => readSavedSauces(null));
   const [menuSpinning, setMenuSpinning] = useState(false);
   const menuSpinTimerRef = useRef(null);
+  const [experimentalMode, setExperimentalMode] = useState(readExperimentalMode);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("saucemate:experimentalMode", String(experimentalMode));
+    } catch (err) {
+      console.error("Failed to persist experimental mode:", err);
+    }
+  }, [experimentalMode]);
 
   useEffect(() => {
     return () => {
@@ -203,7 +234,11 @@ function MainComponent() {
         startBottleSpin(2000);
         setError("");
         const fuzzyMatch = matches[0];
-        setSelectedFood(foodDatabase[fuzzyMatch]);
+        const food = foodDatabase[fuzzyMatch];
+        setSelectedFood({
+          ...food,
+          suggestions: withExperimentalSuggestions(food.suggestions, experimentalMode),
+        });
       } else {
         startBottleSpin();
         setLoading(true);
@@ -221,14 +256,17 @@ function MainComponent() {
           const res = await fetch(`${apiBase}/api/suggest-sauces`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ term: trimmed }),
+            body: JSON.stringify({ term: trimmed, experimental: experimentalMode }),
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok) {
             setError(data.error || "Please try a different search term");
             setSelectedFood(null);
           } else {
-            setSelectedFood(data);
+            setSelectedFood({
+              ...data,
+              suggestions: withExperimentalSuggestions(data.suggestions, experimentalMode),
+            });
             setError("");
           }
         } catch {
@@ -239,7 +277,7 @@ function MainComponent() {
         stopBottleSpin();
       }
     },
-    [startBottleSpin, stopBottleSpin]
+    [startBottleSpin, stopBottleSpin, experimentalMode]
   );
 
   const handleSauceClick = useCallback((sauce) => {
@@ -360,8 +398,14 @@ function MainComponent() {
 
   return (
     <>
-      <div className="min-h-screen bg-black p-4 relative">
-        <div className="max-w-4xl mx-auto mb-2 flex min-h-[40px] flex-wrap items-center justify-between gap-2">
+      <div
+        className={`min-h-screen p-4 relative transition-colors duration-500 ${
+          experimentalMode
+            ? "bg-gradient-to-b from-violet-950/40 via-black to-black"
+            : "bg-black"
+        }`}
+      >
+        <div className="max-w-4xl mx-auto mb-2 relative flex min-h-[40px] flex-wrap items-center justify-between gap-2">
           <button
             type="button"
             onClick={() => {
@@ -394,6 +438,14 @@ function MainComponent() {
               draggable="false"
             />
           </button>
+
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+            <ExperimentalModeToggle
+              enabled={experimentalMode}
+              onChange={setExperimentalMode}
+            />
+          </div>
+
         <div className="flex min-h-[40px] flex-wrap items-center justify-end gap-2">
           {authLoading && isAuthEnabled && (
             <span className="font-roboto text-sm text-gray-500">Checking…</span>
@@ -898,13 +950,23 @@ function MainComponent() {
             <p className="text-lg text-gray-300 font-roboto">
               Find the perfect sauce for your food!
             </p>
-            <p className="text-sm text-gray-400 font-roboto mt-2">
-              Try our experimental pairings for unique flavor combinations!
+            <p
+              className={`text-sm font-roboto mt-2 transition-colors duration-300 ${
+                experimentalMode ? "text-violet-300" : "text-gray-400"
+              }`}
+            >
+              {experimentalMode
+                ? "Experimental mode on — bold, unexpected pairings ahead!"
+                : "Try our experimental pairings for unique flavor combinations!"}
             </p>
           </div>
 
           <form
-            className="bg-white rounded-lg shadow-lg p-6 mb-8"
+            className={`rounded-lg shadow-lg p-6 mb-8 transition-all duration-300 ${
+              experimentalMode
+                ? "bg-white ring-2 ring-violet-500/30 shadow-violet-500/10"
+                : "bg-white"
+            }`}
             onSubmit={(e) => {
               e.preventDefault();
               handleSearch(searchInput);
@@ -982,11 +1044,22 @@ function MainComponent() {
             selectedFood &&
             selectedFood.suggestions &&
             !bottleSpinning && (
-              <div className="bg-white rounded-lg shadow-lg p-6">
-                <h2 className="text-2xl font-bold mb-4 text-black font-roboto">
+              <div
+                className={`rounded-lg shadow-lg p-6 transition-all duration-300 ${
+                  experimentalMode
+                    ? "bg-white ring-2 ring-violet-500/25 shadow-violet-500/10"
+                    : "bg-white"
+                }`}
+              >
+                <h2 className="text-2xl font-bold mb-4 text-black font-roboto flex flex-wrap items-center gap-2">
                   {searchTerm.toLowerCase() === "experimental"
                     ? "Experimental pairings"
                     : `Sauces for ${keyToDisplayName(searchTerm.replace(/\s+/g, " "))}`}
+                  {experimentalMode && (
+                    <span className="inline-flex items-center rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-semibold text-violet-700">
+                      Experimental
+                    </span>
+                  )}
                 </h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {selectedFood.suggestions.map((item, index) => {
@@ -994,7 +1067,11 @@ function MainComponent() {
                     return (
                       <div
                         key={index}
-                        className="relative bg-gray-100 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
+                        className={`relative rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer ${
+                          item.experimental
+                            ? "bg-violet-50 ring-1 ring-violet-200"
+                            : "bg-gray-100"
+                        }`}
                         onClick={() => handleSauceClick(item)}
                       >
                         <button
@@ -1031,6 +1108,11 @@ function MainComponent() {
                         </button>
                         <h3 className="text-xl font-bold mb-2 pr-10 text-black font-roboto">
                           {item.name}
+                          {item.experimental && (
+                            <span className="ml-2 inline-block text-xs font-semibold uppercase tracking-wide text-violet-600">
+                              New
+                            </span>
+                          )}
                         </h3>
                         <p className="text-gray-700 font-roboto">
                           {item.description}

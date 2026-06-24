@@ -33,6 +33,12 @@ export function normalizeSearchTerm(term) {
     .replace(/\s+/g, "");
 }
 
+function cacheSearchKey(term, experimental = false) {
+  const base = normalizeSearchTerm(term);
+  if (!base) return "";
+  return experimental ? `${base}:experimental` : base;
+}
+
 function normalizeSupabaseUrl(url) {
   if (!url || typeof url !== "string") return "";
   let u = url.trim();
@@ -259,9 +265,9 @@ async function saveGeneratedSuggestionToSupabase(
   return true;
 }
 
-export async function getGeneratedSuggestion(term) {
+export async function getGeneratedSuggestion(term, experimental = false) {
   await generatedDatabaseReady;
-  const searchKey = normalizeSearchTerm(term);
+  const searchKey = cacheSearchKey(term, experimental);
   if (!searchKey) return null;
 
   if (supabase) {
@@ -272,9 +278,9 @@ export async function getGeneratedSuggestion(term) {
   return generatedFoodDatabase[searchKey] || null;
 }
 
-export async function saveGeneratedSuggestion(term, provider, payload) {
+export async function saveGeneratedSuggestion(term, provider, payload, experimental = false) {
   await generatedDatabaseReady;
-  const searchKey = normalizeSearchTerm(term);
+  const searchKey = cacheSearchKey(term, experimental);
   if (!searchKey) return;
 
   const entry = {
