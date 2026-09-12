@@ -57,15 +57,14 @@ function withExperimentalSuggestions(suggestions, experimentalMode) {
 }
 
 const EXPERIMENTAL_PARTICLE_COLORS = [
-  "#f5c542",
-  "#ff6bcb",
-  "#7c5cff",
-  "#3de7ff",
-  "#5dff9a",
-  "#ff8a4c",
-  "#ff4d6d",
-  "#c45c7a",
-  "#9b4d6e",
+  "#d4a017", // gold
+  "#c9a227",
+  "#8b1e3f", // burgundy
+  "#6b1a32",
+  "#5b2c6f", // purple
+  "#4a1f6a",
+  "#1e3a5f", // dark blue
+  "#16324f",
 ];
 
 function spawnExperimentalParticles(_inputEl, addParticles) {
@@ -91,7 +90,6 @@ function spawnExperimentalParticles(_inputEl, addParticles) {
         y < keepout.bottom;
       if (!inKeepout) return { x, y };
     }
-    // Prefer edges if center keeps winning
     const edge = Math.floor(Math.random() * 4);
     if (edge === 0) return { x: Math.random() * vw, y: Math.random() * keepout.top };
     if (edge === 1) return { x: Math.random() * vw, y: keepout.bottom + Math.random() * (vh - keepout.bottom) };
@@ -99,8 +97,8 @@ function spawnExperimentalParticles(_inputEl, addParticles) {
     return { x: keepout.right + Math.random() * (vw - keepout.right), y: Math.random() * vh };
   };
 
-  const orbCount = 3 + Math.floor(Math.random() * 3);
-  const streakCount = 2 + Math.floor(Math.random() * 3);
+  const orbCount = 1 + Math.floor(Math.random() * 2);
+  const streakCount = Math.random() > 0.45 ? 1 : 0;
 
   for (let i = 0; i < orbCount; i += 1) {
     const angle = Math.random() * Math.PI * 2;
@@ -210,7 +208,7 @@ function MainComponent() {
   }, []);
 
   const addTypingParticles = useCallback((created) => {
-    setTypingParticles((prev) => [...prev, ...created].slice(-60));
+    setTypingParticles((prev) => [...prev, ...created].slice(-18));
     created.forEach((particle) => {
       const timer = setTimeout(() => {
         setTypingParticles((prev) => prev.filter((p) => p.id !== particle.id));
@@ -529,11 +527,7 @@ function MainComponent() {
   return (
     <>
       <div
-        className={`min-h-screen p-4 relative transition-colors duration-500 ${
-          experimentalMode
-            ? "bg-gradient-to-b from-violet-950/40 via-black to-black"
-            : "bg-black"
-        }`}
+        className="min-h-screen p-4 relative transition-colors duration-500 bg-black"
       >
         {experimentalMode && (
           <div
