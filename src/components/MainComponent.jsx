@@ -58,13 +58,11 @@ function withExperimentalSuggestions(suggestions, experimentalMode) {
 
 const EXPERIMENTAL_PARTICLE_COLORS = [
   "#d4a017", // gold
-  "#c9a227",
+  "#b8860b",
   "#8b1e3f", // burgundy
   "#6b1a32",
   "#5b2c6f", // purple
   "#4a1f6a",
-  "#1e3a5f", // dark blue
-  "#16324f",
 ];
 
 function spawnExperimentalParticles(_inputEl, addParticles) {
@@ -526,9 +524,7 @@ function MainComponent() {
 
   return (
     <>
-      <div
-        className="min-h-screen p-4 relative transition-colors duration-500 bg-black"
-      >
+      <div className="min-h-screen p-4 relative bg-black">
         {experimentalMode && (
           <div
             className="experimental-particle-layer pointer-events-none fixed inset-0 z-[1] overflow-hidden"
