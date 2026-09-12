@@ -72,17 +72,45 @@ function spawnExperimentalParticles(_inputEl, addParticles) {
   const created = [];
   const vw = window.innerWidth;
   const vh = window.innerHeight;
+  // Keep particles out of the centered search UI band
+  const keepout = {
+    left: vw * 0.12,
+    right: vw * 0.88,
+    top: vh * 0.18,
+    bottom: vh * 0.72,
+  };
+
+  const randomBackgroundPoint = () => {
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const x = Math.random() * vw;
+      const y = Math.random() * vh;
+      const inKeepout =
+        x > keepout.left &&
+        x < keepout.right &&
+        y > keepout.top &&
+        y < keepout.bottom;
+      if (!inKeepout) return { x, y };
+    }
+    // Prefer edges if center keeps winning
+    const edge = Math.floor(Math.random() * 4);
+    if (edge === 0) return { x: Math.random() * vw, y: Math.random() * keepout.top };
+    if (edge === 1) return { x: Math.random() * vw, y: keepout.bottom + Math.random() * (vh - keepout.bottom) };
+    if (edge === 2) return { x: Math.random() * keepout.left, y: Math.random() * vh };
+    return { x: keepout.right + Math.random() * (vw - keepout.right), y: Math.random() * vh };
+  };
+
   const orbCount = 3 + Math.floor(Math.random() * 3);
   const streakCount = 2 + Math.floor(Math.random() * 3);
 
   for (let i = 0; i < orbCount; i += 1) {
     const angle = Math.random() * Math.PI * 2;
     const distance = 60 + Math.random() * 140;
+    const point = randomBackgroundPoint();
     created.push({
       id: `${Date.now()}-o-${Math.random().toString(36).slice(2, 8)}`,
       kind: "orb",
-      x: Math.random() * vw,
-      y: Math.random() * vh,
+      x: point.x,
+      y: point.y,
       size: 28 + Math.random() * 56,
       color: EXPERIMENTAL_PARTICLE_COLORS[
         Math.floor(Math.random() * EXPERIMENTAL_PARTICLE_COLORS.length)
@@ -101,11 +129,12 @@ function spawnExperimentalParticles(_inputEl, addParticles) {
     const dy = (Math.random() - 0.45) * 90;
     const width = 140 + Math.random() * 180;
     const height = 28 + Math.random() * 36;
+    const point = randomBackgroundPoint();
     created.push({
       id: `${Date.now()}-s-${Math.random().toString(36).slice(2, 8)}`,
       kind: "streak",
-      x: goingRight ? Math.random() * vw * 0.55 : vw * 0.35 + Math.random() * vw * 0.55,
-      y: 80 + Math.random() * (vh - 160),
+      x: point.x,
+      y: point.y,
       width,
       height,
       color: EXPERIMENTAL_PARTICLE_COLORS[
@@ -508,7 +537,7 @@ function MainComponent() {
       >
         {experimentalMode && (
           <div
-            className="experimental-particle-layer pointer-events-none fixed inset-0 z-0 overflow-hidden"
+            className="experimental-particle-layer pointer-events-none fixed inset-0 z-[1] overflow-hidden"
             aria-hidden="true"
           >
             {typingParticles.map((particle) =>
@@ -551,7 +580,7 @@ function MainComponent() {
           </div>
         )}
 
-        <div className="relative z-10">
+        <div className="relative z-20 isolate">
         <div className="max-w-4xl mx-auto mb-2 relative flex min-h-[40px] flex-wrap items-center justify-between gap-2">
           <button
             type="button"
@@ -1109,10 +1138,10 @@ function MainComponent() {
           </div>
 
           <form
-            className={`rounded-lg shadow-lg p-6 mb-8 transition-all duration-300 ${
+            className={`relative z-30 rounded-lg shadow-lg p-6 mb-8 transition-all duration-300 bg-white ${
               experimentalMode
-                ? "bg-white ring-2 ring-violet-500/30 shadow-violet-500/10"
-                : "bg-white"
+                ? "ring-2 ring-violet-500/30 shadow-violet-500/10"
+                : ""
             }`}
             onSubmit={(e) => {
               e.preventDefault();

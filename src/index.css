@@ -34,6 +34,15 @@
   animation: experimental-pulse 0.45s ease-out;
 }
 
+.experimental-particle-layer {
+  z-index: 1;
+}
+
+.experimental-particle,
+.experimental-streak {
+  z-index: 1;
+}
+
 .experimental-particle {
   position: absolute;
   border-radius: 9999px;
