@@ -3,6 +3,7 @@ import cors from "cors";
 import {
   getGeneratedSuggestion,
   saveGeneratedSuggestion,
+  rememberGeneratedSuggestion,
   getGeneratedCacheHealth,
   normalizeSearchTerm,
 } from "./generatedCache.js";
@@ -14,20 +15,39 @@ app.use(express.json());
 /** @type {Map<string, Promise<{ suggestions: unknown[] }>>} */
 const pendingSuggestions = new Map();
 
-const SYSTEM_PROMPT = `You are a helpful assistant that suggests food pairings. If the user's input contains inappropriate, offensive, or adult content, respond with {"suggestions":[]}. Otherwise, provide sauce suggestions as a JSON object with a single key "suggestions" whose value is an array of 3-4 objects. Each object must have: "name" (string), "description" (short string), "type" (string, e.g. "sauce" or "dip"), and "recipe" (detailed string). Return only valid JSON, no markdown or extra text.`;
+const SYSTEM_PROMPT = `Suggest sauces for food. If the input is inappropriate, offensive, or adult, return {"suggestions":[]}. Otherwise return JSON {"suggestions":[...]} with 3 objects. Each: "name", "description" (max 14 words), "type" ("sauce" or "dip"), "recipe" (3 short steps). JSON only.`;
 
-const EXPERIMENTAL_SYSTEM_PROMPT = `You are a bold, creative chef assistant specializing in unexpected sauce pairings. If the user's input contains inappropriate, offensive, or adult content, respond with {"suggestions":[]}. Otherwise, suggest 3-4 adventurous, fusion, or unconventional sauce pairings as a JSON object with a single key "suggestions" whose value is an array of objects. Each object must have: "name" (string), "description" (short string), "type" (string, e.g. "sauce" or "dip"), and "recipe" (detailed string). Favor surprising flavor combinations. Return only valid JSON, no markdown or extra text.`;
+const EXPERIMENTAL_SYSTEM_PROMPT = `Suggest bold, unexpected sauce pairings. If the input is inappropriate, offensive, or adult, return {"suggestions":[]}. Otherwise return JSON {"suggestions":[...]} with 3 objects. Each: "name", "description" (max 14 words), "type" ("sauce" or "dip"), "recipe" (3 short steps). Favor surprising flavors. JSON only.`;
+
+const AI_REQUEST_TIMEOUT_MS = 10000;
 
 function buildUserPrompt(term, experimental) {
   const style = experimental
-    ? "Suggest 3-4 bold, unconventional or fusion sauce pairings for"
-    : "Suggest 3-4 sauce or condiment pairings for";
-  return `${style}: ${term}. Return only a JSON object with key "suggestions" and an array of objects with name, description, type, recipe.`;
+    ? "Give 3 bold fusion sauces for"
+    : "Give 3 sauces for";
+  return `${style} ${term}. JSON only.`;
+}
+
+async function fetchWithTimeout(url, options, timeoutMs = AI_REQUEST_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (e) {
+    if (e.name === "AbortError") {
+      const err = new Error("Request timed out");
+      err.status = 504;
+      throw err;
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function suggestWithOpenAI(term, apiKey, experimental = false) {
   const systemPrompt = experimental ? EXPERIMENTAL_SYSTEM_PROMPT : SYSTEM_PROMPT;
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+  const res = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -42,6 +62,7 @@ async function suggestWithOpenAI(term, apiKey, experimental = false) {
           content: buildUserPrompt(term, experimental),
         },
       ],
+      max_tokens: 512,
       response_format: { type: "json_object" },
     }),
   });
@@ -88,11 +109,23 @@ function normalizeSuggestionsPayload(parsed) {
 }
 
 const DEFAULT_GEMINI_MODELS = [
-  "gemini-2.5-flash",
   "gemini-2.5-flash-lite",
+  "gemini-2.5-flash",
   "gemini-2.0-flash",
   "gemini-1.5-flash",
 ];
+
+function geminiGenerationConfig(model, experimental) {
+  const config = {
+    temperature: experimental ? 0.8 : 0.4,
+    maxOutputTokens: 512,
+    responseMimeType: "application/json",
+  };
+  if (/^gemini-2\.5/.test(model)) {
+    config.thinkingConfig = { thinkingBudget: 0 };
+  }
+  return config;
+}
 
 function geminiModelsToTry() {
   const fromEnv = (process.env.GEMINI_MODEL || "")
@@ -157,7 +190,7 @@ function formatGeminiError(status, body) {
 
 async function suggestWithGeminiOneModel(term, apiKey, model, experimental = false) {
   const systemPrompt = experimental ? EXPERIMENTAL_SYSTEM_PROMPT : SYSTEM_PROMPT;
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
       model
     )}:generateContent`,
@@ -173,16 +206,12 @@ async function suggestWithGeminiOneModel(term, apiKey, model, experimental = fal
             role: "user",
             parts: [
               {
-                text: `${systemPrompt}\n\nUser request: ${buildUserPrompt(term, experimental)} No markdown.`,
+                text: `${systemPrompt}\n\n${buildUserPrompt(term, experimental)}`,
               },
             ],
           },
         ],
-        generationConfig: {
-          temperature: experimental ? 0.9 : 0.7,
-          maxOutputTokens: 1024,
-          responseMimeType: "application/json",
-        },
+        generationConfig: geminiGenerationConfig(model, experimental),
       }),
     }
   );
@@ -235,17 +264,24 @@ async function suggestWithGemini(term, apiKey, experimental = false) {
   throw err;
 }
 
+function persistSuggestionInBackground(term, provider, payload, experimental) {
+  rememberGeneratedSuggestion(term, provider, payload, experimental);
+  void saveGeneratedSuggestion(term, provider, payload, experimental).catch((e) => {
+    console.warn("Background cache save failed:", e.message);
+  });
+}
+
 async function fetchSuggestionsFromAi(trimmedTerm, provider, openaiKey, geminiKey, experimental = false) {
   if (provider === "gemini" && geminiKey) {
     const raw = await suggestWithGemini(trimmedTerm, geminiKey, experimental);
     const payload = normalizeSuggestionsPayload(raw);
-    await saveGeneratedSuggestion(trimmedTerm, provider, payload, experimental);
+    persistSuggestionInBackground(trimmedTerm, provider, payload, experimental);
     return payload;
   }
   if (provider === "openai" && openaiKey) {
     const raw = await suggestWithOpenAI(trimmedTerm, openaiKey, experimental);
     const payload = normalizeSuggestionsPayload(raw);
-    await saveGeneratedSuggestion(trimmedTerm, provider, payload, experimental);
+    persistSuggestionInBackground(trimmedTerm, provider, payload, experimental);
     return payload;
   }
   const err = new Error(
@@ -318,7 +354,7 @@ app.get("/", (req, res) => {
   });
 });
 
-app.get("/health", async (req, res) => {
+async function sendHealth(req, res) {
   const provider = resolveAiProvider();
   const generatedDatabase = await getGeneratedCacheHealth();
   res.json({
@@ -332,7 +368,10 @@ app.get("/health", async (req, res) => {
     },
     generatedDatabase,
   });
-});
+}
+
+app.get("/health", sendHealth);
+app.get("/api/health", sendHealth);
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`SauceMate API listening on ${port}`));

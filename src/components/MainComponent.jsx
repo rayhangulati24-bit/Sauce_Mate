@@ -19,6 +19,49 @@ function getApiBaseUrl() {
   return null;
 }
 
+const API_SEARCH_TIMEOUT_MS = 18000;
+const clientSuggestionCache = new Map();
+
+function normalizeClientSearchKey(term) {
+  return String(term || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "");
+}
+
+function clientSuggestionCacheKey(term, experimental) {
+  return `${normalizeClientSearchKey(term)}:${experimental ? "1" : "0"}`;
+}
+
+function readClientSuggestion(term, experimental) {
+  const key = clientSuggestionCacheKey(term, experimental);
+  if (clientSuggestionCache.has(key)) return clientSuggestionCache.get(key);
+  try {
+    const raw = sessionStorage.getItem(`saucemate:suggest:${key}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && Array.isArray(parsed.suggestions)) {
+      clientSuggestionCache.set(key, parsed);
+      return parsed;
+    }
+  } catch {
+    /* ignore quota / private mode */
+  }
+  return null;
+}
+
+function writeClientSuggestion(term, experimental, data) {
+  if (!data || !Array.isArray(data.suggestions)) return;
+  const key = clientSuggestionCacheKey(term, experimental);
+  const stored = { suggestions: data.suggestions };
+  clientSuggestionCache.set(key, stored);
+  try {
+    sessionStorage.setItem(`saucemate:suggest:${key}`, JSON.stringify(stored));
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
 /** Build a per-user localStorage key so multiple accounts on one device don't share. */
 function savedSaucesStorageKey(user) {
   return `saucemate:savedSauces:${user?.id || "guest"}`;
@@ -207,6 +250,7 @@ function MainComponent() {
   const [authSubmitting, setAuthSubmitting] = useState(false);
   const [bottleSpinning, setBottleSpinning] = useState(false);
   const bottleSpinTimerRef = useRef(null);
+  const searchAbortRef = useRef(null);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerTab, setDrawerTab] = useState("saved");
@@ -367,7 +411,14 @@ function MainComponent() {
   useEffect(() => {
     return () => {
       if (bottleSpinTimerRef.current) clearTimeout(bottleSpinTimerRef.current);
+      searchAbortRef.current?.abort();
     };
+  }, []);
+
+  useEffect(() => {
+    const apiBase = getApiBaseUrl();
+    if (apiBase === null) return;
+    fetch(`${apiBase}/api/health`).catch(() => {});
   }, []);
 
   // Autocomplete: filter local suggestions as user types (no API calls)
@@ -385,12 +436,18 @@ function MainComponent() {
       const trimmed = term.trim();
       if (!trimmed) return;
 
+      if (searchAbortRef.current) {
+        searchAbortRef.current.abort();
+        searchAbortRef.current = null;
+      }
+      stopBottleSpin();
+      setLoading(false);
+
       setSearchInput(trimmed);
       setSearchTerm(trimmed.toLowerCase());
       setSelectedSauce(null);
 
       if (trimmed.toLowerCase() === "rayhan gulati") {
-        startBottleSpin(2000);
         setError("He is the creator of this app!");
         setSelectedFood(null);
         return;
@@ -403,50 +460,74 @@ function MainComponent() {
       );
 
       if (matches.length > 0) {
-        startBottleSpin(2000);
-        setError("");
         const fuzzyMatch = matches[0];
         const food = foodDatabase[fuzzyMatch];
         setSelectedFood({
           ...food,
           suggestions: withExperimentalSuggestions(food.suggestions, experimentalMode),
         });
-      } else {
-        startBottleSpin();
-        setLoading(true);
-        const apiBase = getApiBaseUrl();
-        if (apiBase === null) {
-          stopBottleSpin();
-          setError(
-            "AI search is not configured. Set VITE_API_URL on your static site to your API URL (see DEPLOY-RENDER.md)."
-          );
+        return;
+      }
+
+      const cached = readClientSuggestion(trimmed, experimentalMode);
+      if (cached) {
+        setSelectedFood({
+          ...cached,
+          suggestions: withExperimentalSuggestions(cached.suggestions, experimentalMode),
+        });
+        return;
+      }
+
+      const apiBase = getApiBaseUrl();
+      if (apiBase === null) {
+        setError(
+          "AI search is not configured. Set VITE_API_URL on your static site to your API URL (see DEPLOY-RENDER.md)."
+        );
+        setSelectedFood(null);
+        return;
+      }
+
+      const controller = new AbortController();
+      searchAbortRef.current = controller;
+      const timeoutId = setTimeout(() => controller.abort(), API_SEARCH_TIMEOUT_MS);
+      startBottleSpin();
+      setLoading(true);
+
+      try {
+        const res = await fetch(`${apiBase}/api/suggest-sauces`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ term: trimmed, experimental: experimentalMode }),
+          signal: controller.signal,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (searchAbortRef.current !== controller) return;
+        if (!res.ok) {
+          setError(data.error || "Please try a different search term");
           setSelectedFood(null);
-          setLoading(false);
-          return;
-        }
-        try {
-          const res = await fetch(`${apiBase}/api/suggest-sauces`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ term: trimmed, experimental: experimentalMode }),
+        } else {
+          writeClientSuggestion(trimmed, experimentalMode, data);
+          setSelectedFood({
+            ...data,
+            suggestions: withExperimentalSuggestions(data.suggestions, experimentalMode),
           });
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok) {
-            setError(data.error || "Please try a different search term");
-            setSelectedFood(null);
-          } else {
-            setSelectedFood({
-              ...data,
-              suggestions: withExperimentalSuggestions(data.suggestions, experimentalMode),
-            });
-            setError("");
-          }
-        } catch {
-          setError("An error occurred while searching. Is the API running?");
-          setSelectedFood(null);
+          setError("");
         }
-        setLoading(false);
-        stopBottleSpin();
+      } catch (e) {
+        if (searchAbortRef.current !== controller) return;
+        if (e.name === "AbortError") {
+          setError("Search took too long. Please try again.");
+        } else {
+          setError("An error occurred while searching. Is the API running?");
+        }
+        setSelectedFood(null);
+      } finally {
+        clearTimeout(timeoutId);
+        if (searchAbortRef.current === controller) {
+          searchAbortRef.current = null;
+          setLoading(false);
+          stopBottleSpin();
+        }
       }
     },
     [startBottleSpin, stopBottleSpin, experimentalMode]
@@ -1283,7 +1364,12 @@ function MainComponent() {
             </div>
           )}
 
-          {searchTerm && !selectedFood && !loading && !bottleSpinning && !error && (
+          {searchTerm &&
+            searchInput.trim().toLowerCase() === searchTerm &&
+            !selectedFood &&
+            !loading &&
+            !bottleSpinning &&
+            !error && (
             <div className="bg-white rounded-lg shadow-lg p-6 mb-8 text-center">
               <p className="text-gray-600 font-roboto">
                 No sauces found for <strong>{keyToDisplayName(searchTerm.replace(/\s+/g, " "))}</strong>. Try a suggestion above or use &quot;Find sauces&quot; to search the web.

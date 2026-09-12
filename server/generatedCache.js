@@ -22,10 +22,39 @@ let supabase = null;
 let cacheBackend = "file";
 let supabaseEntryCount = null;
 let supabaseExperimentalEntryCount = null;
+let supabaseCountsStale = false;
 let supabaseConfiguredFromEnv = false;
 let supabaseUrlHost = null;
 let supabaseKeyRole = null;
 let lastSupabaseError = null;
+
+const MEMORY_CACHE_LIMIT = 400;
+/** @type {Map<string, object>} */
+const memoryCache = new Map();
+
+function touchMemoryCache(key, entry) {
+  if (!key || !entry) return;
+  if (memoryCache.has(key)) memoryCache.delete(key);
+  memoryCache.set(key, entry);
+  while (memoryCache.size > MEMORY_CACHE_LIMIT) {
+    const oldest = memoryCache.keys().next().value;
+    memoryCache.delete(oldest);
+  }
+}
+
+function readMemoryCache(key) {
+  if (!key || !memoryCache.has(key)) return null;
+  const entry = memoryCache.get(key);
+  memoryCache.delete(key);
+  memoryCache.set(key, entry);
+  return entry;
+}
+
+function seedMemoryFromFileCache() {
+  for (const [key, entry] of Object.entries(generatedFoodDatabase)) {
+    if (entry) touchMemoryCache(key, entry);
+  }
+}
 
 /** Align with frontend foodDatabase matching: lowercase, no spaces. */
 export function normalizeSearchTerm(term) {
@@ -252,6 +281,7 @@ const generatedDatabaseReady = (async () => {
       "AI cache backend: Supabase (ai_food_cache + ai_experimental_cache)"
     );
     await loadGeneratedFoodDatabaseFromFile();
+    seedMemoryFromFileCache();
     await migrateFileCacheToSupabase();
     await refreshSupabaseEntryCount();
     return;
@@ -264,6 +294,7 @@ const generatedDatabaseReady = (async () => {
       }`
     );
     await loadGeneratedFoodDatabaseFromFile();
+    seedMemoryFromFileCache();
     return;
   }
   cacheBackend = "file";
@@ -271,6 +302,7 @@ const generatedDatabaseReady = (async () => {
     "AI cache backend: local file (set SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY for Supabase)"
   );
   await loadGeneratedFoodDatabaseFromFile();
+  seedMemoryFromFileCache();
 })();
 
 async function getGeneratedSuggestionFromSupabase(searchKey, experimental = false) {
@@ -314,24 +346,48 @@ async function saveGeneratedSuggestionToSupabase(
     return false;
   }
   lastSupabaseError = null;
-  await refreshSupabaseEntryCount();
+  supabaseCountsStale = true;
   return true;
 }
 
+export function rememberGeneratedSuggestion(term, provider, payload, experimental = false) {
+  const fileKey = cacheSearchKey(term, experimental);
+  if (!fileKey || !payload) return;
+  touchMemoryCache(fileKey, {
+    term: String(term).trim(),
+    source: "ai",
+    provider,
+    generatedAt: new Date().toISOString(),
+    suggestions: Array.isArray(payload.suggestions) ? payload.suggestions : [],
+  });
+}
+
 export async function getGeneratedSuggestion(term, experimental = false) {
-  await generatedDatabaseReady;
   const fileKey = cacheSearchKey(term, experimental);
   if (!fileKey) return null;
+
+  const fromMemory = readMemoryCache(fileKey);
+  if (fromMemory) return fromMemory;
+
+  await generatedDatabaseReady;
+
+  const fromMemoryAfterReady = readMemoryCache(fileKey);
+  if (fromMemoryAfterReady) return fromMemoryAfterReady;
 
   if (supabase) {
     const fromDb = await getGeneratedSuggestionFromSupabase(
       supabaseSearchKey(term),
       experimental
     );
-    if (fromDb) return fromDb;
+    if (fromDb) {
+      touchMemoryCache(fileKey, fromDb);
+      return fromDb;
+    }
   }
 
-  return generatedFoodDatabase[fileKey] || null;
+  const fromFile = generatedFoodDatabase[fileKey] || null;
+  if (fromFile) touchMemoryCache(fileKey, fromFile);
+  return fromFile;
 }
 
 export async function saveGeneratedSuggestion(term, provider, payload, experimental = false) {
@@ -346,6 +402,7 @@ export async function saveGeneratedSuggestion(term, provider, payload, experimen
     generatedAt: new Date().toISOString(),
     suggestions: payload.suggestions,
   };
+  touchMemoryCache(fileKey, entry);
 
   if (supabase) {
     const saved = await saveGeneratedSuggestionToSupabase(
@@ -385,8 +442,9 @@ export async function getGeneratedCacheHealth() {
   await generatedDatabaseReady;
 
   if (cacheBackend === "supabase") {
-    if (supabaseEntryCount === null) {
+    if (supabaseEntryCount === null || supabaseCountsStale) {
       await refreshSupabaseEntryCount();
+      supabaseCountsStale = false;
     }
     return {
       backend: "supabase",
@@ -394,6 +452,7 @@ export async function getGeneratedCacheHealth() {
       experimentalTable: EXPERIMENTAL_TABLE,
       entries: supabaseEntryCount ?? 0,
       experimentalEntries: supabaseExperimentalEntryCount ?? 0,
+      memoryEntries: memoryCache.size,
       fileFallback: GENERATED_DB_FILE,
       supabaseConfigured: supabaseConfiguredFromEnv,
       supabaseUrlHost,
