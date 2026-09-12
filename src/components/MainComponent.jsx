@@ -56,92 +56,103 @@ function withExperimentalSuggestions(suggestions, experimentalMode) {
   return [...suggestions, ...extras];
 }
 
-const EXPERIMENTAL_PARTICLE_COLORS = [
-  "#d4a017", // gold
-  "#b8860b",
-  "#8b1e3f", // burgundy
-  "#6b1a32",
-  "#5b2c6f", // purple
-  "#4a1f6a",
-];
+const ANIMATION_KEY_MAP = {
+  // gold swirl
+  a: { kind: "swirl", color: "#d4a017" },
+  k: { kind: "swirl", color: "#b8860b" },
+  m: { kind: "swirl", color: "#d4a017" },
+  t: { kind: "swirl", color: "#b8860b" },
+  // burgundy flow
+  e: { kind: "flow", color: "#8b1e3f" },
+  n: { kind: "flow", color: "#6b1a32" },
+  s: { kind: "flow", color: "#8b1e3f" },
+  w: { kind: "flow", color: "#6b1a32" },
+  // purple ribbon
+  i: { kind: "ribbon", color: "#5b2c6f" },
+  o: { kind: "ribbon", color: "#4a1f6a" },
+  r: { kind: "ribbon", color: "#5b2c6f" },
+  y: { kind: "ribbon", color: "#4a1f6a" },
+};
 
-function spawnExperimentalParticles(_inputEl, addParticles) {
-  const created = [];
+function randomBackgroundPoint() {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  // Keep particles out of the centered search UI band
   const keepout = {
     left: vw * 0.12,
     right: vw * 0.88,
     top: vh * 0.18,
     bottom: vh * 0.72,
   };
-
-  const randomBackgroundPoint = () => {
-    for (let attempt = 0; attempt < 12; attempt += 1) {
-      const x = Math.random() * vw;
-      const y = Math.random() * vh;
-      const inKeepout =
-        x > keepout.left &&
-        x < keepout.right &&
-        y > keepout.top &&
-        y < keepout.bottom;
-      if (!inKeepout) return { x, y };
-    }
-    const edge = Math.floor(Math.random() * 4);
-    if (edge === 0) return { x: Math.random() * vw, y: Math.random() * keepout.top };
-    if (edge === 1) return { x: Math.random() * vw, y: keepout.bottom + Math.random() * (vh - keepout.bottom) };
-    if (edge === 2) return { x: Math.random() * keepout.left, y: Math.random() * vh };
-    return { x: keepout.right + Math.random() * (vw - keepout.right), y: Math.random() * vh };
-  };
-
-  const orbCount = 1 + Math.floor(Math.random() * 2);
-  const streakCount = Math.random() > 0.45 ? 1 : 0;
-
-  for (let i = 0; i < orbCount; i += 1) {
-    const angle = Math.random() * Math.PI * 2;
-    const distance = 60 + Math.random() * 140;
-    const point = randomBackgroundPoint();
-    created.push({
-      id: `${Date.now()}-o-${Math.random().toString(36).slice(2, 8)}`,
-      kind: "orb",
-      x: point.x,
-      y: point.y,
-      size: 28 + Math.random() * 56,
-      color: EXPERIMENTAL_PARTICLE_COLORS[
-        Math.floor(Math.random() * EXPERIMENTAL_PARTICLE_COLORS.length)
-      ],
-      dx: Math.cos(angle) * distance,
-      dy: Math.sin(angle) * distance - 20,
-      duration: 1.1 + Math.random() * 0.7,
-      scaleEnd: 1.5 + Math.random() * 1.2,
-      rotate: 0,
-    });
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const x = Math.random() * vw;
+    const y = Math.random() * vh;
+    const inKeepout =
+      x > keepout.left &&
+      x < keepout.right &&
+      y > keepout.top &&
+      y < keepout.bottom;
+    if (!inKeepout) return { x, y };
   }
+  const edge = Math.floor(Math.random() * 4);
+  if (edge === 0) return { x: Math.random() * vw, y: Math.random() * keepout.top };
+  if (edge === 1) return { x: Math.random() * vw, y: keepout.bottom + Math.random() * (vh - keepout.bottom) };
+  if (edge === 2) return { x: Math.random() * keepout.left, y: Math.random() * vh };
+  return { x: keepout.right + Math.random() * (vw - keepout.right), y: Math.random() * vh };
+}
 
-  for (let i = 0; i < streakCount; i += 1) {
-    const goingRight = Math.random() > 0.35;
-    const dx = (goingRight ? 1 : -1) * (120 + Math.random() * 220);
-    const dy = (Math.random() - 0.45) * 90;
-    const width = 140 + Math.random() * 180;
-    const height = 28 + Math.random() * 36;
-    const point = randomBackgroundPoint();
+function spawnExperimentalParticles(key, addParticles) {
+  const mapping = ANIMATION_KEY_MAP[key?.toLowerCase()];
+  if (!mapping) return;
+
+  const { kind, color } = mapping;
+  const point = randomBackgroundPoint();
+  const dir = Math.random() > 0.5 ? 1 : -1;
+  const created = [];
+
+  if (kind === "swirl") {
     created.push({
-      id: `${Date.now()}-s-${Math.random().toString(36).slice(2, 8)}`,
-      kind: "streak",
+      id: `${Date.now()}-sw-${Math.random().toString(36).slice(2, 8)}`,
+      kind: "swirl",
       x: point.x,
       y: point.y,
-      width,
-      height,
-      color: EXPERIMENTAL_PARTICLE_COLORS[
-        Math.floor(Math.random() * EXPERIMENTAL_PARTICLE_COLORS.length)
-      ],
-      dx,
-      dy,
-      duration: 1.2 + Math.random() * 0.8,
+      size: 36 + Math.random() * 44,
+      color,
+      spin: dir * (280 + Math.random() * 200),
+      radius: 50 + Math.random() * 70,
+      duration: 1.5 + Math.random() * 0.6,
+      scaleEnd: 1.4 + Math.random() * 0.5,
+    });
+  } else if (kind === "flow") {
+    created.push({
+      id: `${Date.now()}-fl-${Math.random().toString(36).slice(2, 8)}`,
+      kind: "flow",
+      x: point.x,
+      y: point.y,
+      width: 160 + Math.random() * 160,
+      height: 26 + Math.random() * 30,
+      color,
+      dx: dir * (140 + Math.random() * 180),
+      dy: (Math.random() - 0.5) * 80,
+      wave: dir * (36 + Math.random() * 40),
+      rotate: dir * -(10 + Math.random() * 16),
+      duration: 1.6 + Math.random() * 0.7,
+      scaleEnd: 1.2 + Math.random() * 0.3,
+    });
+  } else {
+    created.push({
+      id: `${Date.now()}-rb-${Math.random().toString(36).slice(2, 8)}`,
+      kind: "ribbon",
+      x: point.x,
+      y: point.y,
+      width: 120 + Math.random() * 140,
+      height: 22 + Math.random() * 28,
+      color,
+      dx: dir * (100 + Math.random() * 160),
+      dy: -40 - Math.random() * 70,
+      twist: dir * (160 + Math.random() * 200),
+      wave: dir * (50 + Math.random() * 50),
+      duration: 1.7 + Math.random() * 0.6,
       scaleEnd: 1.15 + Math.random() * 0.35,
-      rotate: (goingRight ? -1 : 1) * (8 + Math.random() * 18),
-      curve: (Math.random() - 0.5) * 40,
     });
   }
 
@@ -219,11 +230,22 @@ function MainComponent() {
     (e) => {
       setSearchInput(e.target.value);
       if (error) setError("");
-      if (experimentalMode) {
-        spawnExperimentalParticles(e.target, addTypingParticles);
+    },
+    [error]
+  );
+
+  const handleSearchKeyDown = useCallback(
+    (e) => {
+      if (e.key === "Enter") {
+        e.currentTarget.form?.requestSubmit();
+        return;
+      }
+      if (!experimentalMode || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key.length === 1 && /[a-z]/i.test(e.key)) {
+        spawnExperimentalParticles(e.key, addTypingParticles);
       }
     },
-    [error, experimentalMode, addTypingParticles]
+    [experimentalMode, addTypingParticles]
   );
 
   useEffect(() => {
@@ -530,11 +552,51 @@ function MainComponent() {
             className="experimental-particle-layer pointer-events-none fixed inset-0 z-[1] overflow-hidden"
             aria-hidden="true"
           >
-            {typingParticles.map((particle) =>
-              particle.kind === "streak" ? (
+            {typingParticles.map((particle) => {
+              if (particle.kind === "swirl") {
+                return (
+                  <span
+                    key={particle.id}
+                    className="experimental-swirl"
+                    style={{
+                      left: particle.x,
+                      top: particle.y,
+                      width: particle.size,
+                      height: particle.size,
+                      "--particle-color": particle.color,
+                      "--spin": `${particle.spin}deg`,
+                      "--radius": `${particle.radius}px`,
+                      "--particle-duration": `${particle.duration}s`,
+                      "--scale-end": particle.scaleEnd,
+                    }}
+                  />
+                );
+              }
+              if (particle.kind === "flow") {
+                return (
+                  <span
+                    key={particle.id}
+                    className="experimental-flow"
+                    style={{
+                      left: particle.x,
+                      top: particle.y,
+                      width: particle.width,
+                      height: particle.height,
+                      "--particle-color": particle.color,
+                      "--dx": `${particle.dx}px`,
+                      "--dy": `${particle.dy}px`,
+                      "--wave": `${particle.wave}px`,
+                      "--rotate": `${particle.rotate}deg`,
+                      "--particle-duration": `${particle.duration}s`,
+                      "--scale-end": particle.scaleEnd,
+                    }}
+                  />
+                );
+              }
+              return (
                 <span
                   key={particle.id}
-                  className="experimental-streak"
+                  className="experimental-ribbon"
                   style={{
                     left: particle.x,
                     top: particle.y,
@@ -543,30 +605,14 @@ function MainComponent() {
                     "--particle-color": particle.color,
                     "--dx": `${particle.dx}px`,
                     "--dy": `${particle.dy}px`,
-                    "--particle-duration": `${particle.duration}s`,
-                    "--scale-end": particle.scaleEnd,
-                    "--rotate": `${particle.rotate}deg`,
-                    "--curve": `${particle.curve}px`,
-                  }}
-                />
-              ) : (
-                <span
-                  key={particle.id}
-                  className="experimental-particle"
-                  style={{
-                    left: particle.x,
-                    top: particle.y,
-                    width: particle.size,
-                    height: particle.size,
-                    "--particle-color": particle.color,
-                    "--dx": `${particle.dx}px`,
-                    "--dy": `${particle.dy}px`,
+                    "--twist": `${particle.twist}deg`,
+                    "--wave": `${particle.wave}px`,
                     "--particle-duration": `${particle.duration}s`,
                     "--scale-end": particle.scaleEnd,
                   }}
                 />
-              )
-            )}
+              );
+            })}
           </div>
         )}
 
@@ -1150,7 +1196,7 @@ function MainComponent() {
                 className="flex-1 p-4 border border-gray-300 rounded-lg text-lg font-roboto bg-gray-50 focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent outline-none transition"
                 value={searchInput}
                 onChange={handleSearchInputChange}
-                onKeyDown={(e) => e.key === "Enter" && e.currentTarget.form?.requestSubmit()}
+                onKeyDown={handleSearchKeyDown}
                 name="food-search"
                 autoComplete="off"
                 aria-label="Search for a food to get sauce recommendations"

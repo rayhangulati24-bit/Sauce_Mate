@@ -45,96 +45,179 @@ body,
   z-index: 1;
 }
 
-.experimental-particle,
-.experimental-streak {
-  z-index: 1;
-}
-
-.experimental-particle {
-  position: absolute;
-  border-radius: 9999px;
-  pointer-events: none;
-  will-change: transform, opacity;
-  background: radial-gradient(
-    circle at 40% 35%,
-    color-mix(in srgb, var(--particle-color) 80%, #000) 0%,
-    var(--particle-color) 40%,
-    transparent 72%
-  );
-  filter: blur(2.5px) saturate(0.95);
-  opacity: 0.8;
-  animation: experimental-particle-fly var(--particle-duration, 0.85s) ease-out forwards;
-  --dx: 0px;
-  --dy: -40px;
-  --scale-end: 1.6;
-}
-
-@keyframes experimental-particle-fly {
-  0% {
-    opacity: 0.85;
-    transform: translate(-50%, -50%) scale(0.3);
-  }
-  25% {
-    opacity: 0.8;
-  }
-  100% {
-    opacity: 0;
-    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(var(--scale-end));
-  }
-}
-
-.experimental-streak {
+.experimental-swirl,
+.experimental-flow,
+.experimental-ribbon {
   position: absolute;
   pointer-events: none;
   will-change: transform, opacity, filter;
+  z-index: 1;
+}
+
+.experimental-swirl {
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle at 35% 30%,
+    color-mix(in srgb, var(--particle-color) 75%, #000) 0%,
+    var(--particle-color) 42%,
+    transparent 74%
+  );
+  filter: blur(3px) saturate(0.95);
+  opacity: 0.8;
+  animation: experimental-swirl-move var(--particle-duration, 1.6s) cubic-bezier(0.37, 0, 0.63, 1) forwards;
+  --spin: 320deg;
+  --radius: 60px;
+  --scale-end: 1.5;
+}
+
+@keyframes experimental-swirl-move {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(0deg) translateX(0) scale(0.35);
+  }
+  15% {
+    opacity: 0.85;
+  }
+  35% {
+    transform: translate(-50%, -50%) rotate(calc(var(--spin) * 0.3))
+      translateX(calc(var(--radius) * 0.55)) scale(0.85);
+  }
+  65% {
+    opacity: 0.7;
+    transform: translate(-50%, -50%) rotate(calc(var(--spin) * 0.7))
+      translateX(var(--radius)) scale(1.15);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(var(--spin))
+      translateX(calc(var(--radius) * 1.25)) scale(var(--scale-end));
+  }
+}
+
+.experimental-flow {
   border-radius: 9999px;
   background:
     radial-gradient(
-      ellipse 55% 80% at 18% 50%,
-      color-mix(in srgb, var(--particle-color) 85%, #000) 0%,
-      var(--particle-color) 45%,
+      ellipse 50% 85% at 15% 50%,
+      color-mix(in srgb, var(--particle-color) 80%, #000) 0%,
+      var(--particle-color) 48%,
       transparent 78%
     ),
     linear-gradient(
       90deg,
       var(--particle-color) 0%,
-      color-mix(in srgb, var(--particle-color) 55%, transparent) 55%,
+      color-mix(in srgb, var(--particle-color) 50%, transparent) 60%,
       transparent 100%
     );
-  filter: blur(14px) saturate(0.95);
+  filter: blur(13px) saturate(0.95);
   opacity: 0.55;
-  animation: experimental-streak-fly var(--particle-duration, 1.4s) ease-out forwards;
+  animation: experimental-flow-move var(--particle-duration, 1.7s) cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
   --dx: 160px;
   --dy: -20px;
+  --wave: 40px;
   --rotate: -12deg;
-  --curve: 20px;
   --scale-end: 1.25;
 }
 
-@keyframes experimental-streak-fly {
+@keyframes experimental-flow-move {
   0% {
     opacity: 0;
     filter: blur(18px) saturate(0.95);
-    transform: translate(-50%, -50%) rotate(var(--rotate)) scale(0.55, 0.7);
+    transform: translate(-50%, -50%) rotate(var(--rotate)) scale(0.5, 0.65);
   }
   18% {
     opacity: 0.6;
   }
-  55% {
-    opacity: 0.45;
-    filter: blur(16px) saturate(0.95);
+  40% {
     transform: translate(
-        calc(-50% + var(--dx) * 0.55),
-        calc(-50% + var(--dy) * 0.55 + var(--curve))
+        calc(-50% + var(--dx) * 0.35),
+        calc(-50% + var(--dy) * 0.3 - var(--wave))
       )
-      rotate(calc(var(--rotate) * 0.7))
-      scale(1.05, 0.95);
+      rotate(calc(var(--rotate) * 0.85))
+      scale(0.95, 0.9);
+  }
+  70% {
+    opacity: 0.45;
+    filter: blur(15px) saturate(0.95);
+    transform: translate(
+        calc(-50% + var(--dx) * 0.7),
+        calc(-50% + var(--dy) * 0.7 + var(--wave) * 0.55)
+      )
+      rotate(calc(var(--rotate) * 0.55))
+      scale(1.08, 0.88);
   }
   100% {
     opacity: 0;
-    filter: blur(22px) saturate(0.9);
+    filter: blur(20px) saturate(0.9);
     transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy)))
-      rotate(calc(var(--rotate) * 0.35))
-      scale(var(--scale-end), 0.75);
+      rotate(calc(var(--rotate) * 0.25))
+      scale(var(--scale-end), 0.7);
+  }
+}
+
+.experimental-ribbon {
+  border-radius: 9999px;
+  background:
+    radial-gradient(
+      ellipse 45% 90% at 20% 45%,
+      color-mix(in srgb, var(--particle-color) 78%, #000) 0%,
+      var(--particle-color) 50%,
+      transparent 80%
+    ),
+    linear-gradient(
+      105deg,
+      transparent 0%,
+      var(--particle-color) 28%,
+      color-mix(in srgb, var(--particle-color) 45%, transparent) 70%,
+      transparent 100%
+    );
+  filter: blur(12px) saturate(0.95);
+  opacity: 0.55;
+  animation: experimental-ribbon-move var(--particle-duration, 1.8s) cubic-bezier(0.45, 0.05, 0.55, 0.95) forwards;
+  --dx: 120px;
+  --dy: -50px;
+  --twist: 180deg;
+  --wave: 55px;
+  --scale-end: 1.2;
+}
+
+@keyframes experimental-ribbon-move {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(0deg) scale(0.4, 0.55);
+  }
+  12% {
+    opacity: 0.65;
+  }
+  30% {
+    transform: translate(
+        calc(-50% + var(--dx) * 0.2),
+        calc(-50% + var(--dy) * 0.2 + var(--wave) * 0.4)
+      )
+      rotate(calc(var(--twist) * 0.25))
+      scale(0.8, 0.75);
+  }
+  55% {
+    opacity: 0.5;
+    transform: translate(
+        calc(-50% + var(--dx) * 0.55),
+        calc(-50% + var(--dy) * 0.5 - var(--wave) * 0.35)
+      )
+      rotate(calc(var(--twist) * 0.6))
+      scale(1.05, 0.7);
+  }
+  80% {
+    transform: translate(
+        calc(-50% + var(--dx) * 0.85),
+        calc(-50% + var(--dy) * 0.85 + var(--wave) * 0.2)
+      )
+      rotate(calc(var(--twist) * 0.85))
+      scale(1.12, 0.65);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy)))
+      rotate(var(--twist))
+      scale(var(--scale-end), 0.55);
   }
 }
