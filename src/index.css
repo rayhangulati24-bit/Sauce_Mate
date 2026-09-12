@@ -54,45 +54,71 @@ body,
   z-index: 1;
 }
 
-/* Orbital swirl with continuous line trail */
+/* Expanding spiral that draws, branches, and fades */
 .experimental-swirl-orbit {
   display: block;
-  animation: experimental-orbit-spin var(--spin-duration, 2s) cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation: experimental-swirl-bloom var(--spin-duration, 2.4s) cubic-bezier(0.37, 0, 0.2, 1) forwards;
   --spin-dir: 1;
-  filter: blur(1.5px);
+  filter: blur(0.6px);
+  mix-blend-mode: screen;
 }
 
 .experimental-swirl-trail {
   display: block;
   overflow: visible;
-  animation: experimental-orbit-fade var(--spin-duration, 2s) ease-out forwards;
 }
 
-.experimental-swirl-trail-line {
-  opacity: 0.85;
-  filter: drop-shadow(0 0 6px color-mix(in srgb, currentColor 40%, transparent));
+.experimental-swirl-arm {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: experimental-swirl-draw var(--spin-duration, 2.4s) ease-out forwards;
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--particle-color) 70%, transparent));
 }
 
-@keyframes experimental-orbit-spin {
+.experimental-swirl-arm.is-branch {
+  opacity: 0.78;
+}
+
+@keyframes experimental-swirl-bloom {
   0% {
-    transform: rotate(0deg) scale(0.55);
-  }
-  100% {
-    transform: rotate(calc(var(--spin-dir) * 540deg)) scale(1.2);
-  }
-}
-
-@keyframes experimental-orbit-fade {
-  0% {
+    transform: rotate(0deg) scale(0.42);
     opacity: 0;
   }
-  12% {
+  8% {
     opacity: 1;
   }
-  70% {
-    opacity: 0.85;
+  42% {
+    transform: rotate(calc(var(--spin-dir) * 36deg)) scale(1.05);
+    opacity: 1;
+  }
+  72% {
+    transform: rotate(calc(var(--spin-dir) * 72deg)) scale(1.28);
+    opacity: 0.55;
   }
   100% {
+    transform: rotate(calc(var(--spin-dir) * 120deg)) scale(1.55);
+    opacity: 0;
+  }
+}
+
+@keyframes experimental-swirl-draw {
+  0% {
+    stroke-dashoffset: 1;
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  38% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  78% {
+    stroke-dashoffset: -0.06;
+    opacity: 0.45;
+  }
+  100% {
+    stroke-dashoffset: -0.16;
     opacity: 0;
   }
 }

@@ -144,6 +144,116 @@ function getInsertedLetter(prevValue, nextValue, selectionStart) {
   return null;
 }
 
+function spiralCoords({ cx, cy, startAngle, turns, startR, endR, dir, t }) {
+  const grow = t * t * (3 - 2 * t);
+  const angle = startAngle + dir * turns * Math.PI * 2 * t;
+  const r = startR + (endR - startR) * grow;
+  return {
+    x: cx + Math.cos(angle) * r,
+    y: cy + Math.sin(angle) * r,
+    angle,
+    r,
+  };
+}
+
+function buildSpiralPath(opts, steps = 96) {
+  let d = "";
+  for (let i = 0; i <= steps; i += 1) {
+    const { x, y } = spiralCoords({ ...opts, t: i / steps });
+    d += `${i === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)} `;
+  }
+  return d.trim();
+}
+
+function createSwirlGeometry(radius) {
+  const size = radius * 2.7;
+  const cx = size / 2;
+  const cy = size / 2;
+  const mainDir = Math.random() > 0.5 ? 1 : -1;
+  const originAngle = Math.random() * Math.PI * 2;
+  const arms = [];
+
+  const mains = [
+    {
+      dir: mainDir,
+      turns: 2.05 + Math.random() * 0.45,
+      endR: radius,
+      width: 6.4 + Math.random() * 2.4,
+      delay: 0,
+      angle: originAngle,
+    },
+    {
+      dir: -mainDir,
+      turns: 1.75 + Math.random() * 0.4,
+      endR: radius * (0.78 + Math.random() * 0.16),
+      width: 5 + Math.random() * 2,
+      delay: 0.05,
+      angle: originAngle + Math.PI * (0.45 + Math.random() * 0.25),
+    },
+  ];
+
+  mains.forEach((arm, i) => {
+    const mainOpts = {
+      cx,
+      cy,
+      startAngle: arm.angle,
+      turns: arm.turns,
+      startR: 3,
+      endR: arm.endR,
+      dir: arm.dir,
+    };
+    arms.push({
+      d: buildSpiralPath(mainOpts),
+      strokeWidth: arm.width + 2.4,
+      delay: arm.delay,
+      isBranch: false,
+    });
+
+    const forkT = 0.3 + Math.random() * 0.2;
+    const fork = spiralCoords({ ...mainOpts, t: forkT });
+    const branchDir = i === 0 || Math.random() > 0.28 ? -arm.dir : arm.dir;
+    arms.push({
+      d: buildSpiralPath({
+        cx,
+        cy,
+        startAngle: fork.angle + branchDir * (0.35 + Math.random() * 0.4),
+        turns: 0.85 + Math.random() * 0.4,
+        startR: fork.r,
+        endR: fork.r + radius * (0.26 + Math.random() * 0.22),
+        dir: branchDir,
+      }),
+      strokeWidth: arm.width * 0.72,
+      delay: arm.delay + 0.12,
+      isBranch: true,
+    });
+  });
+
+  if (Math.random() > 0.3) {
+    const extraDir = Math.random() > 0.5 ? 1 : -1;
+    arms.push({
+      d: buildSpiralPath({
+        cx,
+        cy,
+        startAngle: originAngle + Math.PI * (0.8 + Math.random() * 0.5),
+        turns: 1.05 + Math.random() * 0.35,
+        startR: radius * 0.16,
+        endR: radius * (0.52 + Math.random() * 0.14),
+        dir: extraDir,
+      }),
+      strokeWidth: 2.8 + Math.random() * 1.4,
+      delay: 0.16,
+      isBranch: true,
+    });
+  }
+
+  return {
+    size,
+    dir: mainDir,
+    arms,
+    armLead: arms.reduce((max, arm) => Math.max(max, arm.delay), 0),
+  };
+}
+
 function randomBackgroundPoint() {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
@@ -177,25 +287,24 @@ function spawnExperimentalParticles(key, addParticles) {
   const { kind, color } = mapping;
   const dir = Math.random() > 0.5 ? 1 : -1;
   const created = [];
-  const count = kind === "swirl" ? 3 : 2;
+  const count = 1;
 
   for (let i = 0; i < count; i += 1) {
     const point = randomBackgroundPoint();
     const id = `${Date.now()}-${kind}-${i}-${Math.random().toString(36).slice(2, 7)}`;
 
     if (kind === "swirl") {
+      const radius = 70 + Math.random() * 90;
+      const geometry = createSwirlGeometry(radius);
       created.push({
         id,
         kind: "swirl",
         x: point.x,
         y: point.y,
         color,
-        spinDuration: 1.8 + Math.random() * 0.8,
-        radius: 70 + Math.random() * 90,
+        spinDuration: 2.2 + Math.random() * 0.7,
         delay: i * 0.08,
-        dir,
-        strokeWidth: 6 + Math.random() * 5,
-        trailLength: 0.28 + Math.random() * 0.18,
+        ...geometry,
       });
     } else if (kind === "flow") {
       created.push({
@@ -299,7 +408,7 @@ function MainComponent() {
     created.forEach((particle) => {
       const lifetime =
         (particle.spinDuration || particle.duration || 2) * 1000 +
-        (particle.delay || 0) * 1000 +
+        ((particle.delay || 0) + (particle.armLead || 0)) * 1000 +
         80;
       const timer = setTimeout(() => {
         setTypingParticles((prev) => prev.filter((p) => p.id !== particle.id));
@@ -714,11 +823,7 @@ function MainComponent() {
           >
             {typingParticles.map((particle) => {
               if (particle.kind === "swirl") {
-                const size = particle.radius * 2.4;
-                const r = particle.radius;
-                const circumference = 2 * Math.PI * r;
-                const trail = circumference * (particle.trailLength || 0.35);
-                const gap = Math.max(circumference - trail, 1);
+                const size = particle.size;
                 return (
                   <span
                     key={particle.id}
@@ -732,6 +837,7 @@ function MainComponent() {
                       marginTop: -size / 2,
                       "--spin-duration": `${particle.spinDuration}s`,
                       "--spin-dir": particle.dir,
+                      "--particle-color": particle.color,
                       animationDelay: `${particle.delay}s`,
                     }}
                   >
@@ -741,19 +847,23 @@ function MainComponent() {
                       height={size}
                       viewBox={`0 0 ${size} ${size}`}
                       aria-hidden="true"
-                      style={{ animationDelay: `${particle.delay}s` }}
                     >
-                      <circle
-                        cx={size / 2}
-                        cy={size / 2}
-                        r={r}
-                        fill="none"
-                        stroke={particle.color}
-                        strokeWidth={particle.strokeWidth || 8}
-                        strokeLinecap="round"
-                        strokeDasharray={`${trail} ${gap}`}
-                        className="experimental-swirl-trail-line"
-                      />
+                      {(particle.arms || []).map((arm, idx) => (
+                        <path
+                          key={`${particle.id}-arm-${idx}`}
+                          d={arm.d}
+                          fill="none"
+                          stroke={particle.color}
+                          strokeWidth={arm.strokeWidth}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          pathLength="1"
+                          className={`experimental-swirl-arm${arm.isBranch ? " is-branch" : ""}`}
+                          style={{
+                            animationDelay: `${(particle.delay || 0) + (arm.delay || 0)}s`,
+                          }}
+                        />
+                      ))}
                     </svg>
                   </span>
                 );
