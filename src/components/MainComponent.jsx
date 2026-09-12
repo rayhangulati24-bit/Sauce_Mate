@@ -2,9 +2,24 @@ import React, { useState, useCallback, useMemo, useRef, useEffect } from "react"
 
 import { useAuth } from "../contexts/AuthContext";
 import { foodDatabase } from "../data/foodDatabase";
+import {
+  NOT_FOOD_ERROR,
+  findLocalFoodMatches,
+  isFoodSearchTerm,
+  isNotFoodPayload,
+} from "../../shared/foodSearch";
 import SpinningBottle from "./SpinningBottle";
 import ExperimentalModeToggle from "./ExperimentalModeToggle";
 import menuIcon from "../assets/menu-icon.png";
+
+function isCreatorSearch(term) {
+  const normalized = String(term || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, "")
+    .replace(/\s+/g, " ");
+  return normalized === "rayhan" || normalized === "rayhan gulati";
+}
 
 /** Convert a key like "fishFingers" to "Fish Fingers" */
 function keyToDisplayName(key) {
@@ -40,7 +55,7 @@ function readClientSuggestion(term, experimental) {
     const raw = sessionStorage.getItem(`saucemate:suggest:${key}`);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (parsed && Array.isArray(parsed.suggestions)) {
+    if (parsed && Array.isArray(parsed.suggestions) && parsed.suggestions.length > 0) {
       clientSuggestionCache.set(key, parsed);
       return parsed;
     }
@@ -51,7 +66,7 @@ function readClientSuggestion(term, experimental) {
 }
 
 function writeClientSuggestion(term, experimental, data) {
-  if (!data || !Array.isArray(data.suggestions)) return;
+  if (!data || !Array.isArray(data.suggestions) || data.suggestions.length === 0) return;
   const key = clientSuggestionCacheKey(term, experimental);
   const stored = { suggestions: data.suggestions };
   clientSuggestionCache.set(key, stored);
@@ -633,10 +648,7 @@ function MainComponent() {
   // Autocomplete: filter local suggestions as user types (no API calls)
   const autocompleteMatches = useMemo(() => {
     if (!searchInput.trim()) return [];
-    const searchWords = searchInput.toLowerCase().split(/\s+/).join("");
-    return Object.keys(foodDatabase).filter((key) =>
-      key.toLowerCase().includes(searchWords)
-    );
+    return findLocalFoodMatches(foodDatabase, searchInput);
   }, [searchInput]);
 
   const displayedSuggestions = useMemo(() => {
@@ -646,10 +658,10 @@ function MainComponent() {
       return suggestions.filter((item) => !item.experimental);
     }
     const experimentalOnly = suggestions.filter((item) => item.experimental);
-    return experimentalOnly.length > 0
-      ? experimentalOnly
-      : experimentalCatalogFood().suggestions;
-  }, [selectedFood, experimentalMode]);
+    if (experimentalOnly.length > 0) return experimentalOnly;
+    if (!searchTerm || !isFoodSearchTerm(searchTerm, foodDatabase)) return [];
+    return experimentalCatalogFood().suggestions;
+  }, [selectedFood, experimentalMode, searchTerm]);
 
 
   const handleSearch = useCallback(
@@ -668,17 +680,20 @@ function MainComponent() {
       setSearchTerm(trimmed.toLowerCase());
       setSelectedSauce(null);
 
-      if (trimmed.toLowerCase() === "rayhan gulati") {
+      if (isCreatorSearch(trimmed)) {
         setError("He is the creator of this app!");
         setSelectedFood(null);
         return;
       }
 
+      if (!isFoodSearchTerm(trimmed, foodDatabase)) {
+        setError(NOT_FOOD_ERROR);
+        setSelectedFood(null);
+        return;
+      }
+
       setError("");
-      const searchWords = trimmed.toLowerCase().split(/\s+/).join("");
-      const matches = Object.keys(foodDatabase).filter((key) =>
-        key.toLowerCase().includes(searchWords)
-      );
+      const matches = findLocalFoodMatches(foodDatabase, trimmed);
       const localKey = matches[0];
       const isExperimentalCatalog = localKey === "experimentalPairings";
       const skipNormalLocalPairings =
@@ -744,7 +759,14 @@ function MainComponent() {
         const data = await res.json().catch(() => ({}));
         if (searchAbortRef.current !== controller) return;
         if (!res.ok) {
-          setError(data.error || "Please try a different search term");
+          setError(
+            data.notFood
+              ? data.error || NOT_FOOD_ERROR
+              : data.error || "Please try a different search term"
+          );
+          setSelectedFood(null);
+        } else if (isNotFoodPayload(data)) {
+          setError(data.error || NOT_FOOD_ERROR);
           setSelectedFood(null);
         } else {
           writeClientSuggestion(trimmed, experimentalMode, data);

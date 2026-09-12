@@ -7,6 +7,12 @@ import {
   getGeneratedCacheHealth,
   normalizeSearchTerm,
 } from "./generatedCache.js";
+import { foodDatabase } from "../src/data/foodDatabase.js";
+import {
+  NOT_FOOD_ERROR,
+  isFoodSearchTerm,
+  isNotFoodPayload,
+} from "../shared/foodSearch.js";
 
 const app = express();
 app.use(cors({ origin: true }));
@@ -15,9 +21,12 @@ app.use(express.json());
 /** @type {Map<string, Promise<{ suggestions: unknown[] }>>} */
 const pendingSuggestions = new Map();
 
-const SYSTEM_PROMPT = `Suggest sauces for food. If the input is inappropriate, offensive, or adult, return {"suggestions":[]}. Otherwise return JSON {"suggestions":[...]} with 3 objects. Each: "name", "description" (max 14 words), "type" ("sauce" or "dip"), "recipe" (3 short steps). JSON only.`;
+const FOOD_ONLY_RULE =
+  'If the input is not an edible food, dish, snack, drink, ingredient, or meal — or is inappropriate, offensive, or adult — return {"suggestions":[],"notFood":true}.';
 
-const EXPERIMENTAL_SYSTEM_PROMPT = `Suggest bold, unexpected sauce pairings. If the input is inappropriate, offensive, or adult, return {"suggestions":[]}. Otherwise return JSON {"suggestions":[...]} with 3 objects. Each: "name", "description" (max 14 words), "type" ("sauce" or "dip"), "recipe" (3 short steps). Favor surprising flavors. JSON only.`;
+const SYSTEM_PROMPT = `Suggest sauces for food. ${FOOD_ONLY_RULE} Otherwise return JSON {"suggestions":[...]} with 3 objects. Each: "name", "description" (max 14 words), "type" ("sauce" or "dip"), "recipe" (3 short steps). JSON only.`;
+
+const EXPERIMENTAL_SYSTEM_PROMPT = `Suggest bold, unexpected sauce pairings. ${FOOD_ONLY_RULE} Otherwise return JSON {"suggestions":[...]} with 3 objects. Each: "name", "description" (max 14 words), "type" ("sauce" or "dip"), "recipe" (3 short steps). Favor surprising flavors. JSON only.`;
 
 const AI_REQUEST_TIMEOUT_MS = 10000;
 
@@ -271,16 +280,26 @@ function persistSuggestionInBackground(term, provider, payload, experimental) {
   });
 }
 
+function rejectIfNotFood(raw, payload) {
+  if (isNotFoodPayload(raw) || isNotFoodPayload(payload)) {
+    const err = new Error(NOT_FOOD_ERROR);
+    err.status = 400;
+    err.notFood = true;
+    throw err;
+  }
+  return payload;
+}
+
 async function fetchSuggestionsFromAi(trimmedTerm, provider, openaiKey, geminiKey, experimental = false) {
   if (provider === "gemini" && geminiKey) {
     const raw = await suggestWithGemini(trimmedTerm, geminiKey, experimental);
-    const payload = normalizeSuggestionsPayload(raw);
+    const payload = rejectIfNotFood(raw, normalizeSuggestionsPayload(raw));
     persistSuggestionInBackground(trimmedTerm, provider, payload, experimental);
     return payload;
   }
   if (provider === "openai" && openaiKey) {
     const raw = await suggestWithOpenAI(trimmedTerm, openaiKey, experimental);
-    const payload = normalizeSuggestionsPayload(raw);
+    const payload = rejectIfNotFood(raw, normalizeSuggestionsPayload(raw));
     persistSuggestionInBackground(trimmedTerm, provider, payload, experimental);
     return payload;
   }
@@ -298,6 +317,9 @@ app.post("/api/suggest-sauces", async (req, res) => {
   }
   const experimental = Boolean(req.body?.experimental);
   const trimmedTerm = term.trim();
+  if (!isFoodSearchTerm(trimmedTerm, foodDatabase)) {
+    return res.status(400).json({ error: NOT_FOOD_ERROR, notFood: true });
+  }
   const cacheKey = experimental
     ? `${normalizeSearchTerm(trimmedTerm)}:experimental`
     : normalizeSearchTerm(trimmedTerm);
@@ -309,8 +331,12 @@ app.post("/api/suggest-sauces", async (req, res) => {
   try {
     const cached = await getGeneratedSuggestion(trimmedTerm, experimental);
     if (cached) {
+      const payload = normalizeSuggestionsPayload(cached);
+      if (isNotFoodPayload(payload)) {
+        return res.status(400).json({ error: NOT_FOOD_ERROR, notFood: true });
+      }
       console.log(`[suggest-sauces] cache hit: "${trimmedTerm}" (key: ${cacheKey})`);
-      return res.json(normalizeSuggestionsPayload(cached));
+      return res.json(payload);
     }
 
     console.log(`[suggest-sauces] cache miss: "${trimmedTerm}" (key: ${cacheKey})`);
@@ -333,6 +359,9 @@ app.post("/api/suggest-sauces", async (req, res) => {
     return res.json(payload);
   } catch (e) {
     console.error(e);
+    if (e.notFood) {
+      return res.status(400).json({ error: NOT_FOOD_ERROR, notFood: true });
+    }
     const status = e.status && e.status >= 400 && e.status < 600 ? e.status : 500;
     const message = e.message || "AI request failed";
     const friendly =
