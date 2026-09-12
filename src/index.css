@@ -54,65 +54,46 @@ body,
   z-index: 1;
 }
 
-/* True orbital swirl: parent spins, child sits on radius */
+/* Orbital swirl with continuous line trail */
 .experimental-swirl-orbit {
-  width: 0;
-  height: 0;
+  display: block;
   animation: experimental-orbit-spin var(--spin-duration, 2s) cubic-bezier(0.4, 0, 0.2, 1) forwards;
-  --radius: 80px;
   --spin-dir: 1;
+  filter: blur(1.5px);
 }
 
-.experimental-swirl-blob {
-  position: absolute;
-  left: 0;
-  top: 0;
-  border-radius: 9999px;
-  --trail-angle: 0deg;
-  --trail-opacity: 0.9;
-  --trail-blur: 3px;
-  transform: rotate(var(--trail-angle)) translateX(var(--radius)) translate(-50%, -50%);
-  background: radial-gradient(
-    circle at 35% 30%,
-    color-mix(in srgb, var(--particle-color) 70%, #000) 0%,
-    var(--particle-color) 45%,
-    transparent 75%
-  );
-  filter: blur(var(--trail-blur)) saturate(0.95);
-  opacity: var(--trail-opacity);
+.experimental-swirl-trail {
+  display: block;
+  overflow: visible;
   animation: experimental-orbit-fade var(--spin-duration, 2s) ease-out forwards;
 }
 
-.experimental-swirl-blob.is-trail {
-  mix-blend-mode: screen;
+.experimental-swirl-trail-line {
+  opacity: 0.85;
+  filter: drop-shadow(0 0 6px color-mix(in srgb, currentColor 40%, transparent));
 }
 
 @keyframes experimental-orbit-spin {
   0% {
-    transform: rotate(0deg) scale(0.6);
+    transform: rotate(0deg) scale(0.55);
   }
   100% {
-    transform: rotate(calc(var(--spin-dir) * 540deg)) scale(1.15);
+    transform: rotate(calc(var(--spin-dir) * 540deg)) scale(1.2);
   }
 }
 
 @keyframes experimental-orbit-fade {
   0% {
     opacity: 0;
-    transform: rotate(var(--trail-angle)) translateX(calc(var(--radius) * 0.35)) translate(-50%, -50%)
-      scale(0.5);
   }
   12% {
-    opacity: var(--trail-opacity);
+    opacity: 1;
   }
-  55% {
-    opacity: calc(var(--trail-opacity) * 0.85);
-    transform: rotate(var(--trail-angle)) translateX(var(--radius)) translate(-50%, -50%) scale(1.05);
+  70% {
+    opacity: 0.85;
   }
   100% {
     opacity: 0;
-    transform: rotate(var(--trail-angle)) translateX(calc(var(--radius) * 1.35)) translate(-50%, -50%)
-      scale(1.35);
   }
 }
 

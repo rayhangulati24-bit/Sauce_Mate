@@ -86,35 +86,49 @@ function readExperimentalMode() {
   }
 }
 
-/** Blend experimental pairings into a suggestion list when mode is on. */
-function withExperimentalSuggestions(suggestions, experimentalMode) {
-  if (!experimentalMode || !Array.isArray(suggestions)) return suggestions;
-  const experimental = foodDatabase.experimentalPairings?.suggestions || [];
-  const names = new Set(suggestions.map((s) => s.name?.toLowerCase()));
-  const extras = experimental
-    .filter((s) => !names.has(s.name?.toLowerCase()))
-    .sort(() => Math.random() - 0.5)
-    .slice(0, 2)
-    .map((s) => ({ ...s, experimental: true }));
-  return [...suggestions, ...extras];
+function tagExperimentalSuggestions(suggestions) {
+  if (!Array.isArray(suggestions)) return [];
+  return suggestions.map((s) => ({ ...s, experimental: true }));
+}
+
+function experimentalCatalogFood() {
+  return {
+    suggestions: tagExperimentalSuggestions(
+      foodDatabase.experimentalPairings?.suggestions || []
+    ),
+  };
 }
 
 const ANIMATION_KEY_MAP = {
   // gold swirl
   a: { kind: "swirl", color: "#d4a017" },
-  k: { kind: "swirl", color: "#d4a017" },
-  m: { kind: "swirl", color: "#d4a017" },
-  t: { kind: "swirl", color: "#d4a017" },
+  b: { kind: "swirl", color: "#d4a017" },
+  c: { kind: "swirl", color: "#d4a017" },
+  d: { kind: "swirl", color: "#d4a017" },
+  e: { kind: "swirl", color: "#d4a017" },
+  f: { kind: "swirl", color: "#d4a017" },
+  g: { kind: "swirl", color: "#d4a017" },
+  h: { kind: "swirl", color: "#d4a017" },
+  i: { kind: "swirl", color: "#d4a017" },
   // burgundy flow
-  e: { kind: "flow", color: "#8b1e3f" },
+  j: { kind: "flow", color: "#8b1e3f" },
+  k: { kind: "flow", color: "#8b1e3f" },
+  l: { kind: "flow", color: "#8b1e3f" },
+  m: { kind: "flow", color: "#8b1e3f" },
   n: { kind: "flow", color: "#8b1e3f" },
-  s: { kind: "flow", color: "#8b1e3f" },
-  w: { kind: "flow", color: "#8b1e3f" },
+  o: { kind: "flow", color: "#8b1e3f" },
+  p: { kind: "flow", color: "#8b1e3f" },
+  q: { kind: "flow", color: "#8b1e3f" },
   // purple ribbon
-  i: { kind: "ribbon", color: "#5b2c6f" },
-  o: { kind: "ribbon", color: "#5b2c6f" },
   r: { kind: "ribbon", color: "#5b2c6f" },
+  s: { kind: "ribbon", color: "#5b2c6f" },
+  t: { kind: "ribbon", color: "#5b2c6f" },
+  u: { kind: "ribbon", color: "#5b2c6f" },
+  v: { kind: "ribbon", color: "#5b2c6f" },
+  w: { kind: "ribbon", color: "#5b2c6f" },
+  x: { kind: "ribbon", color: "#5b2c6f" },
   y: { kind: "ribbon", color: "#5b2c6f" },
+  z: { kind: "ribbon", color: "#5b2c6f" },
 };
 
 function getInsertedLetter(prevValue, nextValue, selectionStart) {
@@ -175,13 +189,13 @@ function spawnExperimentalParticles(key, addParticles) {
         kind: "swirl",
         x: point.x,
         y: point.y,
-        size: 42 + Math.random() * 50,
         color,
         spinDuration: 1.8 + Math.random() * 0.8,
         radius: 70 + Math.random() * 90,
         delay: i * 0.08,
         dir,
-        trailCount: 5,
+        strokeWidth: 6 + Math.random() * 5,
+        trailLength: 0.28 + Math.random() * 0.18,
       });
     } else if (kind === "flow") {
       created.push({
@@ -430,6 +444,18 @@ function MainComponent() {
     );
   }, [searchInput]);
 
+  const displayedSuggestions = useMemo(() => {
+    const suggestions = selectedFood?.suggestions;
+    if (!Array.isArray(suggestions)) return [];
+    if (!experimentalMode) {
+      return suggestions.filter((item) => !item.experimental);
+    }
+    const experimentalOnly = suggestions.filter((item) => item.experimental);
+    return experimentalOnly.length > 0
+      ? experimentalOnly
+      : experimentalCatalogFood().suggestions;
+  }, [selectedFood, experimentalMode]);
+
 
   const handleSearch = useCallback(
     async (term) => {
@@ -458,14 +484,32 @@ function MainComponent() {
       const matches = Object.keys(foodDatabase).filter((key) =>
         key.toLowerCase().includes(searchWords)
       );
+      const localKey = matches[0];
+      const isExperimentalCatalog = localKey === "experimentalPairings";
+      const skipNormalLocalPairings =
+        experimentalMode && matches.length > 0 && !isExperimentalCatalog;
 
-      if (matches.length > 0) {
-        const fuzzyMatch = matches[0];
-        const food = foodDatabase[fuzzyMatch];
+      if (matches.length > 0 && !skipNormalLocalPairings) {
+        const food = foodDatabase[localKey];
         setSelectedFood({
           ...food,
-          suggestions: withExperimentalSuggestions(food.suggestions, experimentalMode),
+          suggestions: experimentalMode
+            ? tagExperimentalSuggestions(food.suggestions)
+            : food.suggestions,
         });
+        return;
+      }
+
+      if (skipNormalLocalPairings) {
+        const cachedExperimental = readClientSuggestion(trimmed, true);
+        if (cachedExperimental) {
+          setSelectedFood({
+            ...cachedExperimental,
+            suggestions: tagExperimentalSuggestions(cachedExperimental.suggestions),
+          });
+          return;
+        }
+        setSelectedFood(experimentalCatalogFood());
         return;
       }
 
@@ -473,7 +517,9 @@ function MainComponent() {
       if (cached) {
         setSelectedFood({
           ...cached,
-          suggestions: withExperimentalSuggestions(cached.suggestions, experimentalMode),
+          suggestions: experimentalMode
+            ? tagExperimentalSuggestions(cached.suggestions)
+            : cached.suggestions,
         });
         return;
       }
@@ -509,7 +555,9 @@ function MainComponent() {
           writeClientSuggestion(trimmed, experimentalMode, data);
           setSelectedFood({
             ...data,
-            suggestions: withExperimentalSuggestions(data.suggestions, experimentalMode),
+            suggestions: experimentalMode
+              ? tagExperimentalSuggestions(data.suggestions)
+              : data.suggestions,
           });
           setError("");
         }
@@ -532,6 +580,13 @@ function MainComponent() {
     },
     [startBottleSpin, stopBottleSpin, experimentalMode]
   );
+
+  const prevExperimentalModeRef = useRef(experimentalMode);
+  useEffect(() => {
+    if (prevExperimentalModeRef.current === experimentalMode) return;
+    prevExperimentalModeRef.current = experimentalMode;
+    if (searchTerm) handleSearch(searchTerm);
+  }, [experimentalMode, handleSearch, searchTerm]);
 
   const handleSauceClick = useCallback((sauce) => {
     setSelectedSauce(sauce);
@@ -659,7 +714,11 @@ function MainComponent() {
           >
             {typingParticles.map((particle) => {
               if (particle.kind === "swirl") {
-                const trails = Array.from({ length: particle.trailCount || 5 }, (_, i) => i);
+                const size = particle.radius * 2.4;
+                const r = particle.radius;
+                const circumference = 2 * Math.PI * r;
+                const trail = circumference * (particle.trailLength || 0.35);
+                const gap = Math.max(circumference - trail, 1);
                 return (
                   <span
                     key={particle.id}
@@ -667,31 +726,35 @@ function MainComponent() {
                     style={{
                       left: particle.x,
                       top: particle.y,
-                      "--radius": `${particle.radius}px`,
+                      width: size,
+                      height: size,
+                      marginLeft: -size / 2,
+                      marginTop: -size / 2,
                       "--spin-duration": `${particle.spinDuration}s`,
                       "--spin-dir": particle.dir,
                       animationDelay: `${particle.delay}s`,
                     }}
                   >
-                    {trails.map((i) => {
-                      const t = i / Math.max(trails.length - 1, 1);
-                      const size = particle.size * (1 - t * 0.55);
-                      return (
-                        <span
-                          key={`${particle.id}-trail-${i}`}
-                          className={`experimental-swirl-blob${i === 0 ? " is-lead" : " is-trail"}`}
-                          style={{
-                            width: size,
-                            height: size,
-                            "--particle-color": particle.color,
-                            "--trail-angle": `${-particle.dir * i * 32}deg`,
-                            "--trail-opacity": 0.95 - t * 0.75,
-                            "--trail-blur": `${2.5 + t * 8}px`,
-                            animationDelay: `${particle.delay}s`,
-                          }}
-                        />
-                      );
-                    })}
+                    <svg
+                      className="experimental-swirl-trail"
+                      width={size}
+                      height={size}
+                      viewBox={`0 0 ${size} ${size}`}
+                      aria-hidden="true"
+                      style={{ animationDelay: `${particle.delay}s` }}
+                    >
+                      <circle
+                        cx={size / 2}
+                        cy={size / 2}
+                        r={r}
+                        fill="none"
+                        stroke={particle.color}
+                        strokeWidth={particle.strokeWidth || 8}
+                        strokeLinecap="round"
+                        strokeDasharray={`${trail} ${gap}`}
+                        className="experimental-swirl-trail-line"
+                      />
+                    </svg>
                   </span>
                 );
               }
@@ -1290,7 +1353,7 @@ function MainComponent() {
               }`}
             >
               {experimentalMode
-                ? "Type A/K/M/T gold swirl · E/N/S/W burgundy flow · I/O/R/Y purple ribbon"
+                ? "Every letter animates — A–I gold swirl · J–Q burgundy flow · R–Z purple ribbon"
                 : "Try our experimental pairings for unique flavor combinations!"}
             </p>
           </div>
@@ -1379,7 +1442,7 @@ function MainComponent() {
 
           {searchTerm &&
             selectedFood &&
-            selectedFood.suggestions &&
+            displayedSuggestions.length > 0 &&
             !bottleSpinning && (
               <div
                 className={`rounded-lg shadow-lg p-6 transition-all duration-300 ${
@@ -1399,7 +1462,7 @@ function MainComponent() {
                   )}
                 </h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {selectedFood.suggestions.map((item, index) => {
+                  {displayedSuggestions.map((item, index) => {
                     const saved = isSauceSaved(item);
                     return (
                       <div
