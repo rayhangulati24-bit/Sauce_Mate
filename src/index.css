@@ -68,15 +68,23 @@ body,
   left: 0;
   top: 0;
   border-radius: 9999px;
-  transform: translate(-50%, -50%) translateX(var(--radius));
+  --trail-angle: 0deg;
+  --trail-opacity: 0.9;
+  --trail-blur: 3px;
+  transform: rotate(var(--trail-angle)) translateX(var(--radius)) translate(-50%, -50%);
   background: radial-gradient(
     circle at 35% 30%,
     color-mix(in srgb, var(--particle-color) 70%, #000) 0%,
     var(--particle-color) 45%,
     transparent 75%
   );
-  filter: blur(3px) saturate(0.95);
+  filter: blur(var(--trail-blur)) saturate(0.95);
+  opacity: var(--trail-opacity);
   animation: experimental-orbit-fade var(--spin-duration, 2s) ease-out forwards;
+}
+
+.experimental-swirl-blob.is-trail {
+  mix-blend-mode: screen;
 }
 
 @keyframes experimental-orbit-spin {
@@ -91,18 +99,20 @@ body,
 @keyframes experimental-orbit-fade {
   0% {
     opacity: 0;
-    transform: translate(-50%, -50%) translateX(calc(var(--radius) * 0.35)) scale(0.5);
+    transform: rotate(var(--trail-angle)) translateX(calc(var(--radius) * 0.35)) translate(-50%, -50%)
+      scale(0.5);
   }
   12% {
-    opacity: 0.9;
+    opacity: var(--trail-opacity);
   }
   55% {
-    opacity: 0.75;
-    transform: translate(-50%, -50%) translateX(var(--radius)) scale(1.05);
+    opacity: calc(var(--trail-opacity) * 0.85);
+    transform: rotate(var(--trail-angle)) translateX(var(--radius)) translate(-50%, -50%) scale(1.05);
   }
   100% {
     opacity: 0;
-    transform: translate(-50%, -50%) translateX(calc(var(--radius) * 1.35)) scale(1.35);
+    transform: rotate(var(--trail-angle)) translateX(calc(var(--radius) * 1.35)) translate(-50%, -50%)
+      scale(1.35);
   }
 }
 

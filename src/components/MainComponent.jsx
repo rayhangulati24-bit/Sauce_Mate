@@ -138,6 +138,7 @@ function spawnExperimentalParticles(key, addParticles) {
         radius: 70 + Math.random() * 90,
         delay: i * 0.08,
         dir,
+        trailCount: 5,
       });
     } else if (kind === "flow") {
       created.push({
@@ -577,6 +578,7 @@ function MainComponent() {
           >
             {typingParticles.map((particle) => {
               if (particle.kind === "swirl") {
+                const trails = Array.from({ length: particle.trailCount || 5 }, (_, i) => i);
                 return (
                   <span
                     key={particle.id}
@@ -590,15 +592,25 @@ function MainComponent() {
                       animationDelay: `${particle.delay}s`,
                     }}
                   >
-                    <span
-                      className="experimental-swirl-blob"
-                      style={{
-                        width: particle.size,
-                        height: particle.size,
-                        "--particle-color": particle.color,
-                        animationDelay: `${particle.delay}s`,
-                      }}
-                    />
+                    {trails.map((i) => {
+                      const t = i / Math.max(trails.length - 1, 1);
+                      const size = particle.size * (1 - t * 0.55);
+                      return (
+                        <span
+                          key={`${particle.id}-trail-${i}`}
+                          className={`experimental-swirl-blob${i === 0 ? " is-lead" : " is-trail"}`}
+                          style={{
+                            width: size,
+                            height: size,
+                            "--particle-color": particle.color,
+                            "--trail-angle": `${-particle.dir * i * 32}deg`,
+                            "--trail-opacity": 0.95 - t * 0.75,
+                            "--trail-blur": `${2.5 + t * 8}px`,
+                            animationDelay: `${particle.delay}s`,
+                          }}
+                        />
+                      );
+                    })}
                   </span>
                 );
               }
