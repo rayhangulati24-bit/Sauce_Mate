@@ -64,44 +64,62 @@ const EXPERIMENTAL_PARTICLE_COLORS = [
   "#5dff9a",
   "#ff8a4c",
   "#ff4d6d",
+  "#c45c7a",
+  "#9b4d6e",
 ];
 
-function spawnExperimentalParticles(inputEl, addParticles) {
-  if (!inputEl) return;
-  const caret = inputEl.selectionStart ?? inputEl.value.length;
-  const textBefore = inputEl.value.slice(0, caret);
-  const style = window.getComputedStyle(inputEl);
-  const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d");
-  if (ctx) {
-    ctx.font = style.font || `${style.fontSize} ${style.fontFamily}`;
-  }
-  const textWidth = ctx ? ctx.measureText(textBefore).width : textBefore.length * 10;
-  const paddingLeft = parseFloat(style.paddingLeft) || 0;
-  const caretX = Math.min(
-    Math.max(paddingLeft + textWidth - inputEl.scrollLeft, 14),
-    inputEl.clientWidth - 14
-  );
-
-  const count = 3 + Math.floor(Math.random() * 3);
+function spawnExperimentalParticles(_inputEl, addParticles) {
   const created = [];
-  for (let i = 0; i < count; i += 1) {
-    const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI;
-    const distance = 28 + Math.random() * 52;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const orbCount = 3 + Math.floor(Math.random() * 3);
+  const streakCount = 2 + Math.floor(Math.random() * 3);
+
+  for (let i = 0; i < orbCount; i += 1) {
+    const angle = Math.random() * Math.PI * 2;
+    const distance = 60 + Math.random() * 140;
     created.push({
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      x: caretX + (Math.random() - 0.5) * 10,
-      y: inputEl.clientHeight / 2 + (Math.random() - 0.5) * 8,
-      size: 14 + Math.random() * 22,
+      id: `${Date.now()}-o-${Math.random().toString(36).slice(2, 8)}`,
+      kind: "orb",
+      x: Math.random() * vw,
+      y: Math.random() * vh,
+      size: 28 + Math.random() * 56,
       color: EXPERIMENTAL_PARTICLE_COLORS[
         Math.floor(Math.random() * EXPERIMENTAL_PARTICLE_COLORS.length)
       ],
       dx: Math.cos(angle) * distance,
-      dy: Math.sin(angle) * distance - 10,
-      duration: 0.7 + Math.random() * 0.35,
-      scaleEnd: 1.3 + Math.random() * 0.9,
+      dy: Math.sin(angle) * distance - 20,
+      duration: 1.1 + Math.random() * 0.7,
+      scaleEnd: 1.5 + Math.random() * 1.2,
+      rotate: 0,
     });
   }
+
+  for (let i = 0; i < streakCount; i += 1) {
+    const goingRight = Math.random() > 0.35;
+    const dx = (goingRight ? 1 : -1) * (120 + Math.random() * 220);
+    const dy = (Math.random() - 0.45) * 90;
+    const width = 140 + Math.random() * 180;
+    const height = 28 + Math.random() * 36;
+    created.push({
+      id: `${Date.now()}-s-${Math.random().toString(36).slice(2, 8)}`,
+      kind: "streak",
+      x: goingRight ? Math.random() * vw * 0.55 : vw * 0.35 + Math.random() * vw * 0.55,
+      y: 80 + Math.random() * (vh - 160),
+      width,
+      height,
+      color: EXPERIMENTAL_PARTICLE_COLORS[
+        Math.floor(Math.random() * EXPERIMENTAL_PARTICLE_COLORS.length)
+      ],
+      dx,
+      dy,
+      duration: 1.2 + Math.random() * 0.8,
+      scaleEnd: 1.15 + Math.random() * 0.35,
+      rotate: (goingRight ? -1 : 1) * (8 + Math.random() * 18),
+      curve: (Math.random() - 0.5) * 40,
+    });
+  }
+
   addParticles(created);
 }
 
@@ -163,7 +181,7 @@ function MainComponent() {
   }, []);
 
   const addTypingParticles = useCallback((created) => {
-    setTypingParticles((prev) => [...prev, ...created].slice(-40));
+    setTypingParticles((prev) => [...prev, ...created].slice(-60));
     created.forEach((particle) => {
       const timer = setTimeout(() => {
         setTypingParticles((prev) => prev.filter((p) => p.id !== particle.id));
@@ -488,6 +506,52 @@ function MainComponent() {
             : "bg-black"
         }`}
       >
+        {experimentalMode && (
+          <div
+            className="experimental-particle-layer pointer-events-none fixed inset-0 z-0 overflow-hidden"
+            aria-hidden="true"
+          >
+            {typingParticles.map((particle) =>
+              particle.kind === "streak" ? (
+                <span
+                  key={particle.id}
+                  className="experimental-streak"
+                  style={{
+                    left: particle.x,
+                    top: particle.y,
+                    width: particle.width,
+                    height: particle.height,
+                    "--particle-color": particle.color,
+                    "--dx": `${particle.dx}px`,
+                    "--dy": `${particle.dy}px`,
+                    "--particle-duration": `${particle.duration}s`,
+                    "--scale-end": particle.scaleEnd,
+                    "--rotate": `${particle.rotate}deg`,
+                    "--curve": `${particle.curve}px`,
+                  }}
+                />
+              ) : (
+                <span
+                  key={particle.id}
+                  className="experimental-particle"
+                  style={{
+                    left: particle.x,
+                    top: particle.y,
+                    width: particle.size,
+                    height: particle.size,
+                    "--particle-color": particle.color,
+                    "--dx": `${particle.dx}px`,
+                    "--dy": `${particle.dy}px`,
+                    "--particle-duration": `${particle.duration}s`,
+                    "--scale-end": particle.scaleEnd,
+                  }}
+                />
+              )
+            )}
+          </div>
+        )}
+
+        <div className="relative z-10">
         <div className="max-w-4xl mx-auto mb-2 relative flex min-h-[40px] flex-wrap items-center justify-between gap-2">
           <button
             type="button"
@@ -1045,7 +1109,7 @@ function MainComponent() {
           </div>
 
           <form
-            className={`rounded-lg shadow-lg p-6 mb-8 transition-all duration-300 overflow-visible ${
+            className={`rounded-lg shadow-lg p-6 mb-8 transition-all duration-300 ${
               experimentalMode
                 ? "bg-white ring-2 ring-violet-500/30 shadow-violet-500/10"
                 : "bg-white"
@@ -1058,42 +1122,21 @@ function MainComponent() {
             <label htmlFor="food-search" className="sr-only">
               What food are you eating?
             </label>
-            <div className="relative flex gap-2 mb-2">
-              <div className="relative flex-1 overflow-visible">
-                <input
-                  id="food-search"
-                  ref={searchInputRef}
-                  type="text"
-                  placeholder="e.g. fries, wings, samosa, or 'experimental'"
-                  className="w-full p-4 border border-gray-300 rounded-lg text-lg font-roboto bg-gray-50 focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent outline-none transition"
-                  value={searchInput}
-                  onChange={handleSearchInputChange}
-                  onKeyDown={(e) => e.key === "Enter" && e.currentTarget.form?.requestSubmit()}
-                  name="food-search"
-                  autoComplete="off"
-                  aria-label="Search for a food to get sauce recommendations"
-                  aria-describedby={error ? "search-error" : undefined}
-                />
-                {experimentalMode &&
-                  typingParticles.map((particle) => (
-                    <span
-                      key={particle.id}
-                      className="experimental-particle"
-                      style={{
-                        left: particle.x,
-                        top: particle.y,
-                        width: particle.size,
-                        height: particle.size,
-                        "--particle-color": particle.color,
-                        "--dx": `${particle.dx}px`,
-                        "--dy": `${particle.dy}px`,
-                        "--particle-duration": `${particle.duration}s`,
-                        "--scale-end": particle.scaleEnd,
-                      }}
-                      aria-hidden="true"
-                    />
-                  ))}
-              </div>
+            <div className="flex gap-2 mb-2">
+              <input
+                id="food-search"
+                ref={searchInputRef}
+                type="text"
+                placeholder="e.g. fries, wings, samosa, or 'experimental'"
+                className="flex-1 p-4 border border-gray-300 rounded-lg text-lg font-roboto bg-gray-50 focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent outline-none transition"
+                value={searchInput}
+                onChange={handleSearchInputChange}
+                onKeyDown={(e) => e.key === "Enter" && e.currentTarget.form?.requestSubmit()}
+                name="food-search"
+                autoComplete="off"
+                aria-label="Search for a food to get sauce recommendations"
+                aria-describedby={error ? "search-error" : undefined}
+              />
               <button
                 type="submit"
                 disabled={loading || !searchInput.trim()}
@@ -1248,10 +1291,11 @@ function MainComponent() {
             </div>
           )}
         </div>
+        </div>
         <img
           src="https://ucarecdn.com/7fbf9d98-9e6a-40fa-a046-2642f54bfc6c/-/format/auto/"
           alt="Watermark"
-          className="fixed bottom-4 right-4 w-16 h-16 opacity-50"
+          className="fixed bottom-4 right-4 w-16 h-16 opacity-50 z-20"
         />
       </div>
     </>
