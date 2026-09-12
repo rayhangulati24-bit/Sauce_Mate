@@ -200,7 +200,7 @@ function MainComponent() {
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-8">
             <img
-              src="https://ucarecdn.com/83becc3f-d939-44ed-97c2-1a28578677a1/-/format/auto/"
+              src="/logo.png"
               alt="SauceMate Logo"
               className="w-48 h-48 mx-auto mb-4"
             />

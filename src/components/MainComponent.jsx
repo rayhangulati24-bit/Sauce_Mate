@@ -56,6 +56,55 @@ function withExperimentalSuggestions(suggestions, experimentalMode) {
   return [...suggestions, ...extras];
 }
 
+const EXPERIMENTAL_PARTICLE_COLORS = [
+  "#f5c542",
+  "#ff6bcb",
+  "#7c5cff",
+  "#3de7ff",
+  "#5dff9a",
+  "#ff8a4c",
+  "#ff4d6d",
+];
+
+function spawnExperimentalParticles(inputEl, addParticles) {
+  if (!inputEl) return;
+  const caret = inputEl.selectionStart ?? inputEl.value.length;
+  const textBefore = inputEl.value.slice(0, caret);
+  const style = window.getComputedStyle(inputEl);
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    ctx.font = style.font || `${style.fontSize} ${style.fontFamily}`;
+  }
+  const textWidth = ctx ? ctx.measureText(textBefore).width : textBefore.length * 10;
+  const paddingLeft = parseFloat(style.paddingLeft) || 0;
+  const caretX = Math.min(
+    Math.max(paddingLeft + textWidth - inputEl.scrollLeft, 14),
+    inputEl.clientWidth - 14
+  );
+
+  const count = 3 + Math.floor(Math.random() * 3);
+  const created = [];
+  for (let i = 0; i < count; i += 1) {
+    const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI;
+    const distance = 28 + Math.random() * 52;
+    created.push({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      x: caretX + (Math.random() - 0.5) * 10,
+      y: inputEl.clientHeight / 2 + (Math.random() - 0.5) * 8,
+      size: 14 + Math.random() * 22,
+      color: EXPERIMENTAL_PARTICLE_COLORS[
+        Math.floor(Math.random() * EXPERIMENTAL_PARTICLE_COLORS.length)
+      ],
+      dx: Math.cos(angle) * distance,
+      dy: Math.sin(angle) * distance - 10,
+      duration: 0.7 + Math.random() * 0.35,
+      scaleEnd: 1.3 + Math.random() * 0.9,
+    });
+  }
+  addParticles(created);
+}
+
 function MainComponent() {
   const {
     user,
@@ -91,6 +140,9 @@ function MainComponent() {
   const [menuSpinning, setMenuSpinning] = useState(false);
   const menuSpinTimerRef = useRef(null);
   const [experimentalMode, setExperimentalMode] = useState(readExperimentalMode);
+  const [typingParticles, setTypingParticles] = useState([]);
+  const searchInputRef = useRef(null);
+  const particleTimersRef = useRef([]);
 
   useEffect(() => {
     try {
@@ -98,7 +150,38 @@ function MainComponent() {
     } catch (err) {
       console.error("Failed to persist experimental mode:", err);
     }
+    if (!experimentalMode) {
+      setTypingParticles([]);
+    }
   }, [experimentalMode]);
+
+  useEffect(() => {
+    return () => {
+      particleTimersRef.current.forEach((id) => clearTimeout(id));
+      particleTimersRef.current = [];
+    };
+  }, []);
+
+  const addTypingParticles = useCallback((created) => {
+    setTypingParticles((prev) => [...prev, ...created].slice(-40));
+    created.forEach((particle) => {
+      const timer = setTimeout(() => {
+        setTypingParticles((prev) => prev.filter((p) => p.id !== particle.id));
+      }, particle.duration * 1000 + 40);
+      particleTimersRef.current.push(timer);
+    });
+  }, []);
+
+  const handleSearchInputChange = useCallback(
+    (e) => {
+      setSearchInput(e.target.value);
+      if (error) setError("");
+      if (experimentalMode) {
+        spawnExperimentalParticles(e.target, addTypingParticles);
+      }
+    },
+    [error, experimentalMode, addTypingParticles]
+  );
 
   useEffect(() => {
     return () => {
@@ -943,7 +1026,7 @@ function MainComponent() {
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-8">
             <img
-              src="https://ucarecdn.com/83becc3f-d939-44ed-97c2-1a28578677a1/-/format/auto/"
+              src="/logo.png"
               alt="SauceMate Logo"
               className="w-48 h-48 mx-auto mb-4"
             />
@@ -962,7 +1045,7 @@ function MainComponent() {
           </div>
 
           <form
-            className={`rounded-lg shadow-lg p-6 mb-8 transition-all duration-300 ${
+            className={`rounded-lg shadow-lg p-6 mb-8 transition-all duration-300 overflow-visible ${
               experimentalMode
                 ? "bg-white ring-2 ring-violet-500/30 shadow-violet-500/10"
                 : "bg-white"
@@ -975,23 +1058,42 @@ function MainComponent() {
             <label htmlFor="food-search" className="sr-only">
               What food are you eating?
             </label>
-            <div className="flex gap-2 mb-2">
-              <input
-                id="food-search"
-                type="text"
-                placeholder="e.g. fries, wings, samosa, or 'experimental'"
-                className="flex-1 p-4 border border-gray-300 rounded-lg text-lg font-roboto bg-gray-50 focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent outline-none transition"
-                value={searchInput}
-                onChange={(e) => {
-                  setSearchInput(e.target.value);
-                  if (error) setError("");
-                }}
-                onKeyDown={(e) => e.key === "Enter" && e.currentTarget.form?.requestSubmit()}
-                name="food-search"
-                autoComplete="off"
-                aria-label="Search for a food to get sauce recommendations"
-                aria-describedby={error ? "search-error" : undefined}
-              />
+            <div className="relative flex gap-2 mb-2">
+              <div className="relative flex-1 overflow-visible">
+                <input
+                  id="food-search"
+                  ref={searchInputRef}
+                  type="text"
+                  placeholder="e.g. fries, wings, samosa, or 'experimental'"
+                  className="w-full p-4 border border-gray-300 rounded-lg text-lg font-roboto bg-gray-50 focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent outline-none transition"
+                  value={searchInput}
+                  onChange={handleSearchInputChange}
+                  onKeyDown={(e) => e.key === "Enter" && e.currentTarget.form?.requestSubmit()}
+                  name="food-search"
+                  autoComplete="off"
+                  aria-label="Search for a food to get sauce recommendations"
+                  aria-describedby={error ? "search-error" : undefined}
+                />
+                {experimentalMode &&
+                  typingParticles.map((particle) => (
+                    <span
+                      key={particle.id}
+                      className="experimental-particle"
+                      style={{
+                        left: particle.x,
+                        top: particle.y,
+                        width: particle.size,
+                        height: particle.size,
+                        "--particle-color": particle.color,
+                        "--dx": `${particle.dx}px`,
+                        "--dy": `${particle.dy}px`,
+                        "--particle-duration": `${particle.duration}s`,
+                        "--scale-end": particle.scaleEnd,
+                      }}
+                      aria-hidden="true"
+                    />
+                  ))}
+              </div>
               <button
                 type="submit"
                 disabled={loading || !searchInput.trim()}

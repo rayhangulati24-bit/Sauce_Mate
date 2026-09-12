@@ -33,3 +33,35 @@
 .experimental-pulse {
   animation: experimental-pulse 0.45s ease-out;
 }
+
+.experimental-particle {
+  position: absolute;
+  border-radius: 9999px;
+  pointer-events: none;
+  will-change: transform, opacity;
+  background: radial-gradient(
+    circle at 40% 35%,
+    rgba(255, 255, 255, 0.95) 0%,
+    var(--particle-color) 35%,
+    transparent 72%
+  );
+  filter: blur(1.5px);
+  animation: experimental-particle-fly var(--particle-duration, 0.85s) ease-out forwards;
+  --dx: 0px;
+  --dy: -40px;
+  --scale-end: 1.6;
+}
+
+@keyframes experimental-particle-fly {
+  0% {
+    opacity: 0.95;
+    transform: translate(-50%, -50%) scale(0.35);
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(var(--scale-end));
+  }
+}
