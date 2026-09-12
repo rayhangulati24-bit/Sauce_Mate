@@ -47,7 +47,8 @@ body,
 
 .experimental-swirl-orbit,
 .experimental-flow,
-.experimental-ribbon {
+.experimental-ribbon,
+.experimental-firework {
   position: absolute;
   pointer-events: none;
   will-change: transform, opacity, filter;
@@ -57,7 +58,7 @@ body,
 /* Expanding spiral that draws, branches, and fades */
 .experimental-swirl-orbit {
   display: block;
-  animation: experimental-swirl-bloom var(--spin-duration, 2.4s) cubic-bezier(0.37, 0, 0.2, 1) forwards;
+  animation: experimental-swirl-bloom var(--spin-duration, 2.4s) cubic-bezier(0.45, 0.05, 0.2, 1) forwards;
   --spin-dir: 1;
   filter: blur(0.6px);
   mix-blend-mode: screen;
@@ -71,7 +72,7 @@ body,
 .experimental-swirl-arm {
   stroke-dasharray: 1;
   stroke-dashoffset: 1;
-  animation: experimental-swirl-draw var(--spin-duration, 2.4s) ease-out forwards;
+  animation: experimental-swirl-draw var(--spin-duration, 2.4s) cubic-bezier(0.4, 0, 0.2, 1) forwards;
   filter: drop-shadow(0 0 8px color-mix(in srgb, var(--particle-color) 70%, transparent));
 }
 
@@ -81,22 +82,22 @@ body,
 
 @keyframes experimental-swirl-bloom {
   0% {
-    transform: rotate(0deg) scale(0.42);
+    transform: rotate(0deg) scale(0.5);
     opacity: 0;
   }
-  8% {
+  18% {
     opacity: 1;
   }
-  42% {
-    transform: rotate(calc(var(--spin-dir) * 36deg)) scale(1.05);
+  48% {
+    transform: rotate(calc(var(--spin-dir) * 40deg)) scale(1.04);
     opacity: 1;
   }
-  72% {
-    transform: rotate(calc(var(--spin-dir) * 72deg)) scale(1.28);
-    opacity: 0.55;
+  78% {
+    transform: rotate(calc(var(--spin-dir) * 78deg)) scale(1.22);
+    opacity: 0.62;
   }
   100% {
-    transform: rotate(calc(var(--spin-dir) * 120deg)) scale(1.55);
+    transform: rotate(calc(var(--spin-dir) * 118deg)) scale(1.42);
     opacity: 0;
   }
 }
@@ -106,19 +107,19 @@ body,
     stroke-dashoffset: 1;
     opacity: 0;
   }
-  10% {
+  16% {
+    opacity: 0.85;
+  }
+  48% {
+    stroke-dashoffset: 0.08;
     opacity: 1;
   }
-  38% {
+  68% {
     stroke-dashoffset: 0;
-    opacity: 1;
-  }
-  78% {
-    stroke-dashoffset: -0.06;
-    opacity: 0.45;
+    opacity: 0.85;
   }
   100% {
-    stroke-dashoffset: -0.16;
+    stroke-dashoffset: -0.08;
     opacity: 0;
   }
 }
@@ -250,5 +251,182 @@ body,
     transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy)))
       rotate(var(--twist))
       scale(1.35, 0.4);
+  }
+}
+
+/* Thin swirl rocket that splits into scribble rays */
+.experimental-firework {
+  width: 0;
+  height: 0;
+}
+
+.experimental-firework-rocket,
+.experimental-firework-burst {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.experimental-firework-rocket {
+  width: 64px;
+  height: 64px;
+  margin-left: -32px;
+  margin-top: -32px;
+  transform-origin: center center;
+  animation: experimental-firework-rocket var(--rocket-duration, 0.9s) cubic-bezier(0.4, 0.05, 0.2, 1) forwards;
+  opacity: 0;
+}
+
+.experimental-firework-rocket.is-swirl,
+.experimental-firework-rocket.is-space {
+  animation-name: experimental-firework-rocket-swirl;
+}
+
+.experimental-firework-rocket.is-flow {
+  animation-name: experimental-firework-rocket-flow;
+}
+
+.experimental-firework-rocket.is-ribbon {
+  animation-name: experimental-firework-rocket-ribbon;
+}
+
+.experimental-firework-burst {
+  overflow: visible;
+}
+
+@keyframes experimental-firework-rocket {
+  0% {
+    transform: translate(var(--launch-dx), var(--launch-dy)) scale(0.75);
+    opacity: 0;
+  }
+  14% {
+    opacity: 0.95;
+  }
+  40% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.95;
+  }
+  68% {
+    transform: translate(0, 0) scale(1.18);
+    opacity: 0.72;
+  }
+  88% {
+    transform: translate(0, 0) scale(1.38);
+    opacity: 0.28;
+  }
+  100% {
+    transform: translate(0, 0) scale(1.5);
+    opacity: 0;
+  }
+}
+
+@keyframes experimental-firework-rocket-swirl {
+  0% {
+    transform: translate(var(--launch-dx), var(--launch-dy)) rotate(0deg) scale(0.7);
+    opacity: 0;
+  }
+  14% {
+    opacity: 0.95;
+  }
+  40% {
+    transform: translate(0, 0) rotate(200deg) scale(1);
+    opacity: 0.95;
+  }
+  68% {
+    transform: translate(0, 0) rotate(340deg) scale(1.2);
+    opacity: 0.7;
+  }
+  88% {
+    transform: translate(0, 0) rotate(430deg) scale(1.4);
+    opacity: 0.26;
+  }
+  100% {
+    transform: translate(0, 0) rotate(500deg) scale(1.52);
+    opacity: 0;
+  }
+}
+
+@keyframes experimental-firework-rocket-flow {
+  0% {
+    transform: translate(var(--launch-dx), var(--launch-dy)) rotate(-10deg) scale(0.7);
+    opacity: 0;
+  }
+  14% {
+    opacity: 0.9;
+  }
+  32% {
+    transform: translate(
+        calc(var(--launch-dx) * 0.42 + var(--wave)),
+        calc(var(--launch-dy) * 0.42)
+      )
+      rotate(6deg)
+      scale(0.92);
+    opacity: 0.95;
+  }
+  42% {
+    transform: translate(0, 0) rotate(-2deg) scale(1);
+    opacity: 0.95;
+  }
+  70% {
+    transform: translate(0, 0) rotate(4deg) scale(1.2);
+    opacity: 0.68;
+  }
+  100% {
+    transform: translate(0, 0) scale(1.5);
+    opacity: 0;
+  }
+}
+
+@keyframes experimental-firework-rocket-ribbon {
+  0% {
+    transform: translate(var(--launch-dx), var(--launch-dy)) rotate(0deg) scale(0.65);
+    opacity: 0;
+  }
+  14% {
+    opacity: 0.95;
+  }
+  40% {
+    transform: translate(0, 0) rotate(260deg) scale(1);
+    opacity: 0.95;
+  }
+  70% {
+    transform: translate(0, 0) rotate(420deg) scale(1.22);
+    opacity: 0.65;
+  }
+  100% {
+    transform: translate(0, 0) rotate(560deg) scale(1.5);
+    opacity: 0;
+  }
+}
+
+.experimental-firework-ray {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: experimental-firework-ray var(--burst-duration, 1.35s) cubic-bezier(0.37, 0, 0.2, 1) forwards;
+  opacity: 0;
+}
+
+@keyframes experimental-firework-ray {
+  0% {
+    stroke-dashoffset: 1;
+    opacity: 0;
+  }
+  12% {
+    stroke-dashoffset: 0.7;
+    opacity: 0.75;
+  }
+  34% {
+    stroke-dashoffset: 0.18;
+    opacity: 0.9;
+  }
+  58% {
+    stroke-dashoffset: 0;
+    opacity: 0.82;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0;
   }
 }

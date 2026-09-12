@@ -104,10 +104,7 @@ const ANIMATION_KEY_MAP = {
   a: { kind: "swirl", color: "#d4a017" },
   b: { kind: "swirl", color: "#d4a017" },
   c: { kind: "swirl", color: "#d4a017" },
-  d: { kind: "swirl", color: "#d4a017" },
-  e: { kind: "swirl", color: "#d4a017" },
   f: { kind: "swirl", color: "#d4a017" },
-  g: { kind: "swirl", color: "#d4a017" },
   h: { kind: "swirl", color: "#d4a017" },
   i: { kind: "swirl", color: "#d4a017" },
   // burgundy flow
@@ -115,29 +112,36 @@ const ANIMATION_KEY_MAP = {
   k: { kind: "flow", color: "#8b1e3f" },
   l: { kind: "flow", color: "#8b1e3f" },
   m: { kind: "flow", color: "#8b1e3f" },
-  n: { kind: "flow", color: "#8b1e3f" },
   o: { kind: "flow", color: "#8b1e3f" },
   p: { kind: "flow", color: "#8b1e3f" },
   q: { kind: "flow", color: "#8b1e3f" },
   // purple ribbon
   r: { kind: "ribbon", color: "#5b2c6f" },
-  s: { kind: "ribbon", color: "#5b2c6f" },
-  t: { kind: "ribbon", color: "#5b2c6f" },
   u: { kind: "ribbon", color: "#5b2c6f" },
   v: { kind: "ribbon", color: "#5b2c6f" },
   w: { kind: "ribbon", color: "#5b2c6f" },
   x: { kind: "ribbon", color: "#5b2c6f" },
-  y: { kind: "ribbon", color: "#5b2c6f" },
   z: { kind: "ribbon", color: "#5b2c6f" },
+  // rocket → firework (space + common word endings)
+  " ": { kind: "firework", color: "#f4d35e", style: "space" },
+  e: { kind: "firework", color: "#d4a017", style: "swirl" },
+  d: { kind: "firework", color: "#d4a017", style: "swirl" },
+  g: { kind: "firework", color: "#d4a017", style: "swirl" },
+  n: { kind: "firework", color: "#8b1e3f", style: "flow" },
+  s: { kind: "firework", color: "#5b2c6f", style: "ribbon" },
+  t: { kind: "firework", color: "#5b2c6f", style: "ribbon" },
+  y: { kind: "firework", color: "#5b2c6f", style: "ribbon" },
 };
 
 function getInsertedLetter(prevValue, nextValue, selectionStart) {
   if (nextValue.length <= prevValue.length) return null;
   const idx = Math.max(0, (selectionStart ?? nextValue.length) - 1);
   const ch = nextValue[idx];
+  if (ch === " ") return " ";
   if (ch && /[a-z]/i.test(ch)) return ch.toLowerCase();
   for (let i = 0; i < nextValue.length; i += 1) {
     if (nextValue[i] !== prevValue[i]) {
+      if (nextValue[i] === " ") return " ";
       return /[a-z]/i.test(nextValue[i]) ? nextValue[i].toLowerCase() : null;
     }
   }
@@ -178,7 +182,7 @@ function createSwirlGeometry(radius) {
       dir: mainDir,
       turns: 2.05 + Math.random() * 0.45,
       endR: radius,
-      width: 6.4 + Math.random() * 2.4,
+      width: 10.5 + Math.random() * 3.2,
       delay: 0,
       angle: originAngle,
     },
@@ -186,7 +190,7 @@ function createSwirlGeometry(radius) {
       dir: -mainDir,
       turns: 1.75 + Math.random() * 0.4,
       endR: radius * (0.78 + Math.random() * 0.16),
-      width: 5 + Math.random() * 2,
+      width: 8.5 + Math.random() * 2.6,
       delay: 0.05,
       angle: originAngle + Math.PI * (0.45 + Math.random() * 0.25),
     },
@@ -204,7 +208,7 @@ function createSwirlGeometry(radius) {
     };
     arms.push({
       d: buildSpiralPath(mainOpts),
-      strokeWidth: arm.width + 2.4,
+      strokeWidth: arm.width + 4,
       delay: arm.delay,
       isBranch: false,
     });
@@ -222,7 +226,7 @@ function createSwirlGeometry(radius) {
         endR: fork.r + radius * (0.26 + Math.random() * 0.22),
         dir: branchDir,
       }),
-      strokeWidth: arm.width * 0.72,
+      strokeWidth: arm.width * 0.92,
       delay: arm.delay + 0.12,
       isBranch: true,
     });
@@ -240,7 +244,7 @@ function createSwirlGeometry(radius) {
         endR: radius * (0.52 + Math.random() * 0.14),
         dir: extraDir,
       }),
-      strokeWidth: 2.8 + Math.random() * 1.4,
+      strokeWidth: 6.2 + Math.random() * 2,
       delay: 0.16,
       isBranch: true,
     });
@@ -252,6 +256,68 @@ function createSwirlGeometry(radius) {
     arms,
     armLead: arms.reduce((max, arm) => Math.max(max, arm.delay), 0),
   };
+}
+
+function fireworkLaunchAndBurst() {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const leftSide = Math.random() > 0.5;
+  const x = leftSide
+    ? vw * (0.05 + Math.random() * 0.12)
+    : vw * (0.83 + Math.random() * 0.12);
+  const launchX = x + (Math.random() - 0.5) * 20;
+  const launchY = vh * (0.74 + Math.random() * 0.18);
+  const burstX = Math.min(Math.max(x + (Math.random() - 0.5) * vw * 0.06, 28), vw - 28);
+  const burstY = vh * (0.07 + Math.random() * 0.16);
+  return { launchX, launchY, burstX, burstY };
+}
+
+function buildScribbleRay({ cx, cy, angle, length, steps = 11 }) {
+  const nx = Math.cos(angle + Math.PI / 2);
+  const ny = Math.sin(angle + Math.PI / 2);
+  const phase = Math.random() * Math.PI * 2;
+  let d = `M ${cx.toFixed(1)} ${cy.toFixed(1)}`;
+  for (let i = 1; i <= steps; i += 1) {
+    const t = i / steps;
+    const r = length * t;
+    const wobble = Math.sin(phase + t * Math.PI * 3.1) * (6 + length * 0.035) * t;
+    const x = cx + Math.cos(angle) * r + nx * wobble;
+    const y = cy + Math.sin(angle) * r + ny * wobble;
+    d += ` L ${x.toFixed(1)} ${y.toFixed(1)}`;
+  }
+  return d;
+}
+
+function createScribbleBurst() {
+  const size = 260;
+  const cx = size / 2;
+  const cy = size / 2;
+  const count = 6 + Math.floor(Math.random() * 2);
+  const origin = Math.random() * Math.PI * 2;
+  const rays = [];
+  for (let i = 0; i < count; i += 1) {
+    const angle = origin + (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.22;
+    rays.push({
+      d: buildScribbleRay({
+        cx,
+        cy,
+        angle,
+        length: 68 + Math.random() * 42,
+      }),
+      strokeWidth: 5.2 + Math.random() * 1.6,
+      delay: i * 0.07,
+    });
+  }
+  const rocket = buildSpiralPath({
+    cx: 32,
+    cy: 32,
+    startAngle: Math.random() * Math.PI * 2,
+    turns: 1.45,
+    startR: 3,
+    endR: 20,
+    dir: Math.random() > 0.5 ? 1 : -1,
+  }, 48);
+  return { size, rays, rocket };
 }
 
 function randomBackgroundPoint() {
@@ -293,7 +359,27 @@ function spawnExperimentalParticles(key, addParticles) {
     const point = randomBackgroundPoint();
     const id = `${Date.now()}-${kind}-${i}-${Math.random().toString(36).slice(2, 7)}`;
 
-    if (kind === "swirl") {
+    if (kind === "firework") {
+      const path = fireworkLaunchAndBurst();
+      const burst = createScribbleBurst();
+      const rocketDuration = 1.18 + Math.random() * 0.1;
+      const burstDuration = 1.4 + Math.random() * 0.15;
+      const splitAt = rocketDuration * 0.4;
+      created.push({
+        id,
+        kind: "firework",
+        color,
+        style: mapping.style || "space",
+        rocketDuration,
+        burstDuration,
+        splitAt,
+        duration: splitAt + burstDuration,
+        delay: i * 0.08,
+        wave: (Math.random() > 0.5 ? 1 : -1) * (36 + Math.random() * 28),
+        ...path,
+        ...burst,
+      });
+    } else if (kind === "swirl") {
       const radius = 70 + Math.random() * 90;
       const geometry = createSwirlGeometry(radius);
       created.push({
@@ -822,6 +908,72 @@ function MainComponent() {
             aria-hidden="true"
           >
             {typingParticles.map((particle) => {
+              if (particle.kind === "firework") {
+                const size = particle.size || 260;
+                return (
+                  <span
+                    key={particle.id}
+                    className="experimental-firework"
+                    style={{
+                      left: particle.burstX,
+                      top: particle.burstY,
+                      "--particle-color": particle.color,
+                      "--launch-dx": `${particle.launchX - particle.burstX}px`,
+                      "--launch-dy": `${particle.launchY - particle.burstY}px`,
+                      "--rocket-duration": `${particle.rocketDuration}s`,
+                      "--burst-duration": `${particle.burstDuration}s`,
+                      "--wave": `${particle.wave || 40}px`,
+                      animationDelay: `${particle.delay}s`,
+                    }}
+                  >
+                    <svg
+                      className={`experimental-firework-rocket is-${particle.style || "space"}`}
+                      width="64"
+                      height="64"
+                      viewBox="0 0 64 64"
+                      aria-hidden="true"
+                      style={{ animationDelay: `${particle.delay}s` }}
+                    >
+                      <path
+                        d={particle.rocket}
+                        fill="none"
+                        stroke={particle.color}
+                        strokeWidth="5.4"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                    <svg
+                      className="experimental-firework-burst"
+                      width={size}
+                      height={size}
+                      viewBox={`0 0 ${size} ${size}`}
+                      aria-hidden="true"
+                      style={{
+                        marginLeft: -size / 2,
+                        marginTop: -size / 2,
+                      }}
+                    >
+                      {(particle.rays || []).map((ray, idx) => (
+                        <path
+                          key={`${particle.id}-ray-${idx}`}
+                          d={ray.d}
+                          fill="none"
+                          stroke={particle.color}
+                          strokeWidth={ray.strokeWidth}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          pathLength="1"
+                          className="experimental-firework-ray"
+                          style={{
+                            animationDelay: `${(particle.delay || 0) + (particle.splitAt || particle.rocketDuration * 0.56) + (ray.delay || 0)}s`,
+                          }}
+                        />
+                      ))}
+                    </svg>
+                  </span>
+                );
+              }
               if (particle.kind === "swirl") {
                 const size = particle.size;
                 return (
@@ -1463,7 +1615,7 @@ function MainComponent() {
               }`}
             >
               {experimentalMode
-                ? "Every letter animates — A–I gold swirl · J–Q burgundy flow · R–Z purple ribbon"
+                ? "Every letter animates — A–I gold swirl · J–Q burgundy flow · R–Z purple ribbon · space & E/S/D/T/Y/N/G rocket firework"
                 : "Try our experimental pairings for unique flavor combinations!"}
             </p>
           </div>
