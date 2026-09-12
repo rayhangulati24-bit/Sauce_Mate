@@ -59,31 +59,44 @@ function withExperimentalSuggestions(suggestions, experimentalMode) {
 const ANIMATION_KEY_MAP = {
   // gold swirl
   a: { kind: "swirl", color: "#d4a017" },
-  k: { kind: "swirl", color: "#b8860b" },
+  k: { kind: "swirl", color: "#d4a017" },
   m: { kind: "swirl", color: "#d4a017" },
-  t: { kind: "swirl", color: "#b8860b" },
+  t: { kind: "swirl", color: "#d4a017" },
   // burgundy flow
   e: { kind: "flow", color: "#8b1e3f" },
-  n: { kind: "flow", color: "#6b1a32" },
+  n: { kind: "flow", color: "#8b1e3f" },
   s: { kind: "flow", color: "#8b1e3f" },
-  w: { kind: "flow", color: "#6b1a32" },
+  w: { kind: "flow", color: "#8b1e3f" },
   // purple ribbon
   i: { kind: "ribbon", color: "#5b2c6f" },
-  o: { kind: "ribbon", color: "#4a1f6a" },
+  o: { kind: "ribbon", color: "#5b2c6f" },
   r: { kind: "ribbon", color: "#5b2c6f" },
-  y: { kind: "ribbon", color: "#4a1f6a" },
+  y: { kind: "ribbon", color: "#5b2c6f" },
 };
+
+function getInsertedLetter(prevValue, nextValue, selectionStart) {
+  if (nextValue.length <= prevValue.length) return null;
+  const idx = Math.max(0, (selectionStart ?? nextValue.length) - 1);
+  const ch = nextValue[idx];
+  if (ch && /[a-z]/i.test(ch)) return ch.toLowerCase();
+  for (let i = 0; i < nextValue.length; i += 1) {
+    if (nextValue[i] !== prevValue[i]) {
+      return /[a-z]/i.test(nextValue[i]) ? nextValue[i].toLowerCase() : null;
+    }
+  }
+  return null;
+}
 
 function randomBackgroundPoint() {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   const keepout = {
-    left: vw * 0.12,
-    right: vw * 0.88,
-    top: vh * 0.18,
-    bottom: vh * 0.72,
+    left: vw * 0.1,
+    right: vw * 0.9,
+    top: vh * 0.16,
+    bottom: vh * 0.74,
   };
-  for (let attempt = 0; attempt < 12; attempt += 1) {
+  for (let attempt = 0; attempt < 14; attempt += 1) {
     const x = Math.random() * vw;
     const y = Math.random() * vh;
     const inKeepout =
@@ -101,59 +114,65 @@ function randomBackgroundPoint() {
 }
 
 function spawnExperimentalParticles(key, addParticles) {
-  const mapping = ANIMATION_KEY_MAP[key?.toLowerCase()];
+  const mapping = ANIMATION_KEY_MAP[key];
   if (!mapping) return;
 
   const { kind, color } = mapping;
-  const point = randomBackgroundPoint();
   const dir = Math.random() > 0.5 ? 1 : -1;
   const created = [];
+  const count = kind === "swirl" ? 3 : 2;
 
-  if (kind === "swirl") {
-    created.push({
-      id: `${Date.now()}-sw-${Math.random().toString(36).slice(2, 8)}`,
-      kind: "swirl",
-      x: point.x,
-      y: point.y,
-      size: 36 + Math.random() * 44,
-      color,
-      spin: dir * (280 + Math.random() * 200),
-      radius: 50 + Math.random() * 70,
-      duration: 1.5 + Math.random() * 0.6,
-      scaleEnd: 1.4 + Math.random() * 0.5,
-    });
-  } else if (kind === "flow") {
-    created.push({
-      id: `${Date.now()}-fl-${Math.random().toString(36).slice(2, 8)}`,
-      kind: "flow",
-      x: point.x,
-      y: point.y,
-      width: 160 + Math.random() * 160,
-      height: 26 + Math.random() * 30,
-      color,
-      dx: dir * (140 + Math.random() * 180),
-      dy: (Math.random() - 0.5) * 80,
-      wave: dir * (36 + Math.random() * 40),
-      rotate: dir * -(10 + Math.random() * 16),
-      duration: 1.6 + Math.random() * 0.7,
-      scaleEnd: 1.2 + Math.random() * 0.3,
-    });
-  } else {
-    created.push({
-      id: `${Date.now()}-rb-${Math.random().toString(36).slice(2, 8)}`,
-      kind: "ribbon",
-      x: point.x,
-      y: point.y,
-      width: 120 + Math.random() * 140,
-      height: 22 + Math.random() * 28,
-      color,
-      dx: dir * (100 + Math.random() * 160),
-      dy: -40 - Math.random() * 70,
-      twist: dir * (160 + Math.random() * 200),
-      wave: dir * (50 + Math.random() * 50),
-      duration: 1.7 + Math.random() * 0.6,
-      scaleEnd: 1.15 + Math.random() * 0.35,
-    });
+  for (let i = 0; i < count; i += 1) {
+    const point = randomBackgroundPoint();
+    const id = `${Date.now()}-${kind}-${i}-${Math.random().toString(36).slice(2, 7)}`;
+
+    if (kind === "swirl") {
+      created.push({
+        id,
+        kind: "swirl",
+        x: point.x,
+        y: point.y,
+        size: 42 + Math.random() * 50,
+        color,
+        spinDuration: 1.8 + Math.random() * 0.8,
+        radius: 70 + Math.random() * 90,
+        delay: i * 0.08,
+        dir,
+      });
+    } else if (kind === "flow") {
+      created.push({
+        id,
+        kind: "flow",
+        x: point.x,
+        y: point.y,
+        width: 180 + Math.random() * 200,
+        height: 34 + Math.random() * 40,
+        color,
+        dx: dir * (220 + Math.random() * 200),
+        dy: -30 + (Math.random() - 0.5) * 120,
+        wave: dir * (70 + Math.random() * 60),
+        duration: 2 + Math.random() * 0.8,
+        delay: i * 0.1,
+        dir,
+      });
+    } else {
+      created.push({
+        id,
+        kind: "ribbon",
+        x: point.x,
+        y: point.y,
+        width: 150 + Math.random() * 170,
+        height: 28 + Math.random() * 36,
+        color,
+        dx: dir * (180 + Math.random() * 180),
+        dy: -60 - Math.random() * 100,
+        wave: dir * (80 + Math.random() * 70),
+        twist: dir * (420 + Math.random() * 180),
+        duration: 2.1 + Math.random() * 0.7,
+        delay: i * 0.09,
+        dir,
+      });
+    }
   }
 
   addParticles(created);
@@ -217,35 +236,39 @@ function MainComponent() {
   }, []);
 
   const addTypingParticles = useCallback((created) => {
-    setTypingParticles((prev) => [...prev, ...created].slice(-18));
+    setTypingParticles((prev) => [...prev, ...created].slice(-24));
     created.forEach((particle) => {
+      const lifetime =
+        (particle.spinDuration || particle.duration || 2) * 1000 +
+        (particle.delay || 0) * 1000 +
+        80;
       const timer = setTimeout(() => {
         setTypingParticles((prev) => prev.filter((p) => p.id !== particle.id));
-      }, particle.duration * 1000 + 40);
+      }, lifetime);
       particleTimersRef.current.push(timer);
     });
   }, []);
 
   const handleSearchInputChange = useCallback(
     (e) => {
-      setSearchInput(e.target.value);
+      const next = e.target.value;
+      const letter = getInsertedLetter(searchInput, next, e.target.selectionStart);
+      setSearchInput(next);
       if (error) setError("");
+      if (experimentalMode && letter) {
+        spawnExperimentalParticles(letter, addTypingParticles);
+      }
     },
-    [error]
+    [searchInput, error, experimentalMode, addTypingParticles]
   );
 
   const handleSearchKeyDown = useCallback(
     (e) => {
       if (e.key === "Enter") {
         e.currentTarget.form?.requestSubmit();
-        return;
-      }
-      if (!experimentalMode || e.ctrlKey || e.metaKey || e.altKey) return;
-      if (e.key.length === 1 && /[a-z]/i.test(e.key)) {
-        spawnExperimentalParticles(e.key, addTypingParticles);
       }
     },
-    [experimentalMode, addTypingParticles]
+    []
   );
 
   useEffect(() => {
@@ -557,19 +580,26 @@ function MainComponent() {
                 return (
                   <span
                     key={particle.id}
-                    className="experimental-swirl"
+                    className="experimental-swirl-orbit"
                     style={{
                       left: particle.x,
                       top: particle.y,
-                      width: particle.size,
-                      height: particle.size,
-                      "--particle-color": particle.color,
-                      "--spin": `${particle.spin}deg`,
                       "--radius": `${particle.radius}px`,
-                      "--particle-duration": `${particle.duration}s`,
-                      "--scale-end": particle.scaleEnd,
+                      "--spin-duration": `${particle.spinDuration}s`,
+                      "--spin-dir": particle.dir,
+                      animationDelay: `${particle.delay}s`,
                     }}
-                  />
+                  >
+                    <span
+                      className="experimental-swirl-blob"
+                      style={{
+                        width: particle.size,
+                        height: particle.size,
+                        "--particle-color": particle.color,
+                        animationDelay: `${particle.delay}s`,
+                      }}
+                    />
+                  </span>
                 );
               }
               if (particle.kind === "flow") {
@@ -586,9 +616,8 @@ function MainComponent() {
                       "--dx": `${particle.dx}px`,
                       "--dy": `${particle.dy}px`,
                       "--wave": `${particle.wave}px`,
-                      "--rotate": `${particle.rotate}deg`,
                       "--particle-duration": `${particle.duration}s`,
-                      "--scale-end": particle.scaleEnd,
+                      animationDelay: `${particle.delay}s`,
                     }}
                   />
                 );
@@ -605,10 +634,10 @@ function MainComponent() {
                     "--particle-color": particle.color,
                     "--dx": `${particle.dx}px`,
                     "--dy": `${particle.dy}px`,
-                    "--twist": `${particle.twist}deg`,
                     "--wave": `${particle.wave}px`,
+                    "--twist": `${particle.twist}deg`,
                     "--particle-duration": `${particle.duration}s`,
-                    "--scale-end": particle.scaleEnd,
+                    animationDelay: `${particle.delay}s`,
                   }}
                 />
               );
@@ -1168,7 +1197,7 @@ function MainComponent() {
               }`}
             >
               {experimentalMode
-                ? "Experimental mode on — bold, unexpected pairings ahead!"
+                ? "Type A/K/M/T gold swirl · E/N/S/W burgundy flow · I/O/R/Y purple ribbon"
                 : "Try our experimental pairings for unique flavor combinations!"}
             </p>
           </div>
