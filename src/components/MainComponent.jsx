@@ -5,6 +5,7 @@ import { foodDatabase } from "../data/foodDatabase";
 import {
   NOT_FOOD_ERROR,
   findLocalFoodMatches,
+  isExperimentalCatalogTerm,
   isFoodSearchTerm,
   isNotFoodPayload,
 } from "../../shared/foodSearch";
@@ -659,8 +660,10 @@ function MainComponent() {
     }
     const experimentalOnly = suggestions.filter((item) => item.experimental);
     if (experimentalOnly.length > 0) return experimentalOnly;
-    if (!searchTerm || !isFoodSearchTerm(searchTerm, foodDatabase)) return [];
-    return experimentalCatalogFood().suggestions;
+    if (isExperimentalCatalogTerm(searchTerm)) {
+      return experimentalCatalogFood().suggestions;
+    }
+    return [];
   }, [selectedFood, experimentalMode, searchTerm]);
 
 
@@ -707,19 +710,6 @@ function MainComponent() {
             ? tagExperimentalSuggestions(food.suggestions)
             : food.suggestions,
         });
-        return;
-      }
-
-      if (skipNormalLocalPairings) {
-        const cachedExperimental = readClientSuggestion(trimmed, true);
-        if (cachedExperimental) {
-          setSelectedFood({
-            ...cachedExperimental,
-            suggestions: tagExperimentalSuggestions(cachedExperimental.suggestions),
-          });
-          return;
-        }
-        setSelectedFood(experimentalCatalogFood());
         return;
       }
 

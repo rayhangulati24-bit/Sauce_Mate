@@ -26,15 +26,15 @@ const FOOD_ONLY_RULE =
 
 const SYSTEM_PROMPT = `Suggest sauces for food. ${FOOD_ONLY_RULE} Otherwise return JSON {"suggestions":[...]} with 3 objects. Each: "name", "description" (max 14 words), "type" ("sauce" or "dip"), "recipe" (3 short steps). JSON only.`;
 
-const EXPERIMENTAL_SYSTEM_PROMPT = `Suggest bold, unexpected sauce pairings. ${FOOD_ONLY_RULE} Otherwise return JSON {"suggestions":[...]} with 3 objects. Each: "name", "description" (max 14 words), "type" ("sauce" or "dip"), "recipe" (3 short steps). Favor surprising flavors. JSON only.`;
+const EXPERIMENTAL_SYSTEM_PROMPT = `Suggest bold, unexpected sauce pairings tailored to one specific food. ${FOOD_ONLY_RULE} Otherwise return JSON {"suggestions":[...]} with exactly 3 objects. Each: "name" (distinct sauce name), "description" (max 14 words; explain why it pairs with the requested food), "type" ("sauce" or "dip"), "recipe" (3 short steps for that pairing). Do not reuse the same sauce ideas across different foods; avoid one-size-fits-all fusion templates. JSON only.`;
 
 const AI_REQUEST_TIMEOUT_MS = 10000;
 
 function buildUserPrompt(term, experimental) {
-  const style = experimental
-    ? "Give 3 bold fusion sauces for"
-    : "Give 3 sauces for";
-  return `${style} ${term}. JSON only.`;
+  if (experimental) {
+    return `Food: "${term}". Give 3 bold sauces made specifically for ${term} — each description must tie to ${term}'s flavor, texture, or cuisine. Do not suggest generic sauces that could apply to any dish. JSON only.`;
+  }
+  return `Give 3 sauces for ${term}. JSON only.`;
 }
 
 async function fetchWithTimeout(url, options, timeoutMs = AI_REQUEST_TIMEOUT_MS) {
@@ -126,7 +126,7 @@ const DEFAULT_GEMINI_MODELS = [
 
 function geminiGenerationConfig(model, experimental) {
   const config = {
-    temperature: experimental ? 0.8 : 0.4,
+    temperature: experimental ? 0.95 : 0.4,
     maxOutputTokens: 512,
     responseMimeType: "application/json",
   };
