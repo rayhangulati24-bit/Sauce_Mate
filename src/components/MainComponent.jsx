@@ -115,6 +115,19 @@ function experimentalCatalogFood() {
   };
 }
 
+function localExperimentalFood(localKey) {
+  const food = foodDatabase[localKey];
+  if (!food?.suggestions?.length) return null;
+  return {
+    suggestions: tagExperimentalSuggestions(food.suggestions),
+  };
+}
+
+/** Built-in catalog foods use AI in experimental mode; fall back if the API is down or unconfigured. */
+function canUseLocalExperimentalFallback(localKey) {
+  return Boolean(localKey && localKey !== "experimentalPairings" && localExperimentalFood(localKey));
+}
+
 const ANIMATION_KEY_MAP = {
   // gold swirl
   a: { kind: "swirl", color: "#d4a017" },
@@ -464,6 +477,7 @@ function MainComponent() {
   const [selectedSauce, setSelectedSauce] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [pairingNotice, setPairingNotice] = useState("");
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authTab, setAuthTab] = useState("signin");
@@ -696,6 +710,7 @@ function MainComponent() {
       }
 
       setError("");
+      setPairingNotice("");
       const matches = findLocalFoodMatches(foodDatabase, trimmed);
       const localKey = matches[0];
       const isExperimentalCatalog = localKey === "experimentalPairings";
@@ -726,6 +741,13 @@ function MainComponent() {
 
       const apiBase = getApiBaseUrl();
       if (apiBase === null) {
+        if (canUseLocalExperimentalFallback(localKey)) {
+          setSelectedFood(localExperimentalFood(localKey));
+          setPairingNotice(
+            "Experimental AI is not configured. Showing built-in pairings for this food."
+          );
+          return;
+        }
         setError(
           "AI search is not configured. Set VITE_API_URL on your static site to your API URL (see DEPLOY-RENDER.md)."
         );
@@ -749,12 +771,24 @@ function MainComponent() {
         const data = await res.json().catch(() => ({}));
         if (searchAbortRef.current !== controller) return;
         if (!res.ok) {
-          setError(
-            data.notFood
-              ? data.error || NOT_FOOD_ERROR
-              : data.error || "Please try a different search term"
-          );
-          setSelectedFood(null);
+          if (
+            !data.notFood &&
+            canUseLocalExperimentalFallback(localKey) &&
+            (res.status === 503 || res.status === 502 || res.status === 504)
+          ) {
+            setSelectedFood(localExperimentalFood(localKey));
+            setPairingNotice(
+              "Experimental AI is unavailable right now. Showing built-in pairings for this food."
+            );
+            setError("");
+          } else {
+            setError(
+              data.notFood
+                ? data.error || NOT_FOOD_ERROR
+                : data.error || "Please try a different search term"
+            );
+            setSelectedFood(null);
+          }
         } else if (isNotFoodPayload(data)) {
           setError(data.error || NOT_FOOD_ERROR);
           setSelectedFood(null);
@@ -766,16 +800,24 @@ function MainComponent() {
               ? tagExperimentalSuggestions(data.suggestions)
               : data.suggestions,
           });
+          setPairingNotice("");
           setError("");
         }
       } catch (e) {
         if (searchAbortRef.current !== controller) return;
         if (e.name === "AbortError") {
           setError("Search took too long. Please try again.");
+          setSelectedFood(null);
+        } else if (canUseLocalExperimentalFallback(localKey)) {
+          setSelectedFood(localExperimentalFood(localKey));
+          setPairingNotice(
+            "Could not reach the AI server. Start it with npm run dev:api, or use built-in pairings below."
+          );
+          setError("");
         } else {
           setError("An error occurred while searching. Is the API running?");
+          setSelectedFood(null);
         }
-        setSelectedFood(null);
       } finally {
         clearTimeout(timeoutId);
         if (searchAbortRef.current === controller) {
@@ -1672,6 +1714,11 @@ function MainComponent() {
             {error && (
               <p id="search-error" className="text-red-500 mb-2 font-roboto" role="alert">
                 {error}
+              </p>
+            )}
+            {pairingNotice && !error && (
+              <p className="text-violet-600 mb-2 font-roboto text-sm" role="status">
+                {pairingNotice}
               </p>
             )}
             {searchInput.trim() && autocompleteMatches.length > 0 && (
