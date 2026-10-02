@@ -355,6 +355,42 @@ export function findLocalFoodMatches(foodDatabase, term) {
   });
 }
 
+/** Best built-in catalog key for a search term (e.g. "french fries" → fries). */
+export function resolveCatalogFoodKey(term, foodDatabase) {
+  const matches = findLocalFoodMatches(foodDatabase, term);
+  if (matches.length > 0) {
+    const compact = normalizeFoodTerm(term);
+    const exact = matches.find(
+      (key) => key !== "experimentalPairings" && normalizeFoodTerm(key) === compact
+    );
+    if (exact) return exact;
+
+    const fuzzy = matches.find((key) => {
+      if (key === "experimentalPairings") return false;
+      const keyNorm = normalizeFoodTerm(key);
+      return compact.includes(keyNorm) || keyNorm.includes(compact);
+    });
+    if (fuzzy) return fuzzy;
+
+    return matches.find((key) => key !== "experimentalPairings") || null;
+  }
+
+  if (!foodDatabase) return null;
+  const words = String(term || "")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+  for (const word of words) {
+    if (word.length < 3) continue;
+    const wordNorm = normalizeFoodTerm(word);
+    const key = Object.keys(foodDatabase).find(
+      (k) => k !== "experimentalPairings" && normalizeFoodTerm(k) === wordNorm
+    );
+    if (key) return key;
+  }
+  return null;
+}
+
 export function isFoodSearchTerm(term, foodDatabase) {
   const trimmed = String(term || "").trim();
   if (!trimmed) return false;

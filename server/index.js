@@ -12,6 +12,7 @@ import {
   NOT_FOOD_ERROR,
   isFoodSearchTerm,
   isNotFoodPayload,
+  resolveCatalogFoodKey,
 } from "../shared/foodSearch.js";
 
 const app = express();
@@ -340,6 +341,22 @@ app.post("/api/suggest-sauces", async (req, res) => {
     }
 
     console.log(`[suggest-sauces] cache miss: "${trimmedTerm}" (key: ${cacheKey})`);
+
+    const hasAi = Boolean(openaiKey || geminiKey);
+    if (!hasAi && experimental) {
+      const catalogKey = resolveCatalogFoodKey(trimmedTerm, foodDatabase);
+      const catalogFood = catalogKey ? foodDatabase[catalogKey] : null;
+      if (catalogFood?.suggestions?.length) {
+        const payload = {
+          ...normalizeSuggestionsPayload({ suggestions: catalogFood.suggestions }),
+          catalogFallback: true,
+        };
+        console.log(
+          `[suggest-sauces] no AI keys — catalog fallback for "${trimmedTerm}" (${catalogKey})`
+        );
+        return res.json(payload);
+      }
+    }
 
     let pending = pendingSuggestions.get(cacheKey);
     if (!pending) {

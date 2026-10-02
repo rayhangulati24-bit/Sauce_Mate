@@ -8,6 +8,7 @@ import {
   isExperimentalCatalogTerm,
   isFoodSearchTerm,
   isNotFoodPayload,
+  resolveCatalogFoodKey,
 } from "../../shared/foodSearch";
 import SpinningBottle from "./SpinningBottle";
 import ExperimentalModeToggle from "./ExperimentalModeToggle";
@@ -127,6 +128,24 @@ function localExperimentalFood(localKey) {
 function canUseLocalExperimentalFallback(localKey) {
   return Boolean(localKey && localKey !== "experimentalPairings" && localExperimentalFood(localKey));
 }
+
+function catalogKeyForTerm(term) {
+  return resolveCatalogFoodKey(term, foodDatabase);
+}
+
+function isAiProviderUnavailable(data, status) {
+  const message = String(data?.error || "");
+  return (
+    status === 503 ||
+    status === 502 ||
+    status === 504 ||
+    /no ai provider configured/i.test(message) ||
+    /GEMINI_API_KEY|OPENAI_API_KEY/.test(message)
+  );
+}
+
+const CATALOG_FALLBACK_NOTICE =
+  "Add GEMINI_API_KEY or OPENAI_API_KEY on the API server for AI experimental pairings. Showing built-in sauces for this food.";
 
 const ANIMATION_KEY_MAP = {
   // gold swirl
@@ -712,7 +731,7 @@ function MainComponent() {
       setError("");
       setPairingNotice("");
       const matches = findLocalFoodMatches(foodDatabase, trimmed);
-      const localKey = matches[0];
+      const localKey = catalogKeyForTerm(trimmed) || matches[0];
       const isExperimentalCatalog = localKey === "experimentalPairings";
       const skipNormalLocalPairings =
         experimentalMode && matches.length > 0 && !isExperimentalCatalog;
@@ -773,14 +792,20 @@ function MainComponent() {
         if (!res.ok) {
           if (
             !data.notFood &&
-            canUseLocalExperimentalFallback(localKey) &&
-            (res.status === 503 || res.status === 502 || res.status === 504)
+            isAiProviderUnavailable(data, res.status) &&
+            canUseLocalExperimentalFallback(localKey)
           ) {
             setSelectedFood(localExperimentalFood(localKey));
-            setPairingNotice(
-              "Experimental AI is unavailable right now. Showing built-in pairings for this food."
-            );
+            setPairingNotice(CATALOG_FALLBACK_NOTICE);
             setError("");
+          } else if (
+            !data.notFood &&
+            isAiProviderUnavailable(data, res.status)
+          ) {
+            setError(
+              "Experimental AI needs an API key. Add GEMINI_API_KEY or OPENAI_API_KEY to the server (see DEPLOY-RENDER.md)."
+            );
+            setSelectedFood(null);
           } else {
             setError(
               data.notFood
@@ -793,14 +818,16 @@ function MainComponent() {
           setError(data.error || NOT_FOOD_ERROR);
           setSelectedFood(null);
         } else {
-          writeClientSuggestion(trimmed, experimentalMode, data);
+          if (!data.catalogFallback) {
+            writeClientSuggestion(trimmed, experimentalMode, data);
+          }
           setSelectedFood({
             ...data,
             suggestions: experimentalMode
               ? tagExperimentalSuggestions(data.suggestions)
               : data.suggestions,
           });
-          setPairingNotice("");
+          setPairingNotice(data.catalogFallback ? CATALOG_FALLBACK_NOTICE : "");
           setError("");
         }
       } catch (e) {
